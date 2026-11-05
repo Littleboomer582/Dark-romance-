@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#2b2a1f"/>
+  <circle cx="256" cy="256" r="190" fill="#4a4a30"/>
+  <path d="M96 300 Q256 120 416 300 Z" fill="#6b7140"/>
+  <rect x="86" y="296" width="340" height="28" rx="14" fill="#4c522c"/>
+  <rect x="150" y="360" width="250" height="26" fill="#1e1d19"/>
+  <rect x="110" y="356" width="120" height="34" rx="6" fill="#6b4a2a"/>
+  <text x="256" y="455" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="58" fill="#d9a441" text-anchor="middle">1945</text>
+</svg>

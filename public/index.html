@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Frontline 1945</title>
+  <meta name="theme-color" content="#2b2a1f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Main menu -->
+  <div id="menu" class="screen">
+    <div class="panel">
+      <h1>FRONTLINE <span>1945</span></h1>
+      <p class="tag">Online team deathmatch &mdash; Allies vs Axis</p>
+      <div class="row">
+        <label>Callsign<input id="name" maxlength="16" placeholder="Soldier"></label>
+        <label>Room code<input id="room" maxlength="8" placeholder="PUBLIC"></label>
+      </div>
+      <div class="row">
+        <label>Bots per team (if you create the room)
+          <select id="bots">
+            <option value="0">0 &mdash; humans only</option><option value="2">2</option><option value="3">3</option>
+            <option value="4" selected>4</option><option value="5">5</option><option value="6">6</option>
+          </select>
+        </label>
+      </div>
+      <h2>Loadout</h2>
+      <div id="loadoutMenu"></div>
+      <button id="deploy" class="big">DEPLOY</button>
+      <button id="install" class="ghost hidden">Install as app</button>
+      <p class="help" id="controlsHelp"></p>
+      <p class="err" id="err"></p>
+    </div>
+  </div>
+
+  <!-- In-game loadout editor -->
+  <div id="loadoutScreen" class="screen hidden">
+    <div class="panel">
+      <h2>Change Loadout</h2>
+      <p class="tag">Changes apply on your next respawn.</p>
+      <div id="loadoutGame"></div>
+      <div class="row">
+        <button id="loadoutSave" class="big">SAVE</button>
+        <button id="switchTeam" class="ghost">Switch team</button>
+        <button id="leave" class="ghost">Leave match</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scoreboard -->
+  <div id="scoreboard" class="screen hidden"><div class="panel wide"><div id="scoreContent"></div></div></div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="topbar">
+      <div class="team allies"><span class="flag">ALLIES</span><b id="scA">0</b></div>
+      <div id="timer">10:00</div>
+      <div class="team axis"><b id="scX">0</b><span class="flag">AXIS</span></div>
+    </div>
+    <div id="killfeed"></div>
+    <div id="bottomLeft">
+      <div id="hpBar"><div id="hpFill"></div></div>
+      <div id="hpText">100</div>
+    </div>
+    <div id="bottomRight">
+      <div id="weaponName">Thompson</div>
+      <div id="weaponAtts"></div>
+      <div id="ammo"><b id="ammoMag">30</b> / <span id="ammoRes">120</span></div>
+      <div id="nades"></div>
+    </div>
+    <div id="center"></div>
+    <div id="ping"></div>
+    <div id="menuBtns">
+      <button id="btnScores" class="hudBtn">&#9776;</button>
+      <button id="btnLoadout" class="hudBtn">&#9881;</button>
+      <button id="btnFull" class="hudBtn">&#x26F6;</button>
+    </div>
+  </div>
+
+  <!-- Touch controls -->
+  <div id="touch" class="hidden">
+    <button class="tbtn" id="tFire">FIRE</button>
+    <button class="tbtn" id="tAds">AIM</button>
+    <button class="tbtn" id="tReload">R</button>
+    <button class="tbtn" id="tSwap">&#8646;</button>
+    <button class="tbtn" id="tNade">G</button>
+    <button class="tbtn" id="tMelee">&#9876;</button>
+    <button class="tbtn" id="tSprint">RUN</button>
+  </div>
+
+  <div id="rotate" class="hidden">Rotate your device to landscape</div>
+
+  <script src="shared.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
