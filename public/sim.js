@@ -88,27 +88,73 @@ function makeGun(id, atts) {
   return { id, stats, ammo: stats.mag, reserve: stats.reserve };
 }
 
+const SCORE_OPTIONS = [25, 50, 75, 100, 150];
+const TIME_OPTIONS = [5, 10, 15, 20, 30];
+function cleanText(v, max, def) { return String(v == null ? '' : v).replace(/[^\w .\-'!?#&]/g, '').trim().slice(0, max) || def; }
+
 class Room {
-  constructor(code, botsPerTeam) {
+  // opts: { name, bots, score, time, priv, lobby }
+  constructor(code, opts) {
     this.code = code;
-    this.botsPerTeam = botsPerTeam;
     this.players = new Map();
     this.nades = [];
     this.events = [];
     this.tickCount = 0;
-    this.reset();
+    this.lobby = !!opts.lobby;
+    this.hostId = 0;
+    this.applySettings(opts);
+    this.name = cleanText(opts.name, 24, this.lobby ? 'Lobby ' + code : 'Quick Play');
+    this.score = { allies: 0, axis: 0 };
+    if (this.lobby) { this.state = 'lobby'; this.endsAt = 0; } else this.reset();
+  }
+
+  applySettings(o) {
+    if (o.bots != null) this.botsPerTeam = S.clamp(o.bots | 0, 0, 7);
+    if (this.botsPerTeam == null) this.botsPerTeam = 4;
+    if (SCORE_OPTIONS.includes(+o.score)) this.scoreLimit = +o.score;
+    if (!this.scoreLimit) this.scoreLimit = S.SCORE_LIMIT;
+    if (TIME_OPTIONS.includes(+o.time)) this.matchMs = +o.time * 60000;
+    if (!this.matchMs) this.matchMs = S.MATCH_MS;
+    if (o.priv != null) this.priv = !!o.priv;
+    if (o.name != null && this.lobby) this.name = cleanText(o.name, 24, this.name || 'Lobby');
   }
 
   reset() {
     const now = Date.now();
     this.score = { allies: 0, axis: 0 };
     this.state = 'playing';
-    this.endsAt = now + S.MATCH_MS;
+    this.endsAt = now + this.matchMs;
     this.nades = [];
     for (const p of this.players.values()) {
       p.kills = 0; p.deaths = 0;
       this.spawn(p, now);
     }
+  }
+
+  backToLobby() {
+    this.state = 'lobby';
+    this.nades = [];
+    for (const p of this.players.values()) { p.alive = false; p.respawnAt = Infinity; p.ready = false; p.input.fire = false; }
+    this.sendLobby();
+  }
+
+  // give a player their guns without putting them on the battlefield (lobby)
+  equip(p) {
+    p.loadout = p.pendingLoadout;
+    p.guns = [makeGun(p.loadout.primary, p.loadout.atts), makeGun(p.loadout.secondary, p.loadout.secAtts)];
+    p.slot = 0; p.alive = false; p.respawnAt = Infinity;
+  }
+
+  info() {
+    return { code: this.code, name: this.name, host: (this.players.get(this.hostId) || {}).name || '', players: this.humans().length,
+      max: MAX_PLAYERS_PER_ROOM, bots: this.botsPerTeam, state: this.state, score: this.scoreLimit, time: this.matchMs / 60000 };
+  }
+
+  sendLobby() {
+    const msg = JSON.stringify({ t: 'lobby', code: this.code, name: this.name, host: this.hostId, state: this.state, lobby: this.lobby, priv: !!this.priv,
+      settings: { bots: this.botsPerTeam, score: this.scoreLimit, time: this.matchMs / 60000 },
+      players: [...this.players.values()].map((p) => ({ i: p.id, n: p.name, t: p.team, b: p.bot ? 1 : 0, r: p.ready ? 1 : 0 })) });
+    for (const p of this.players.values()) if (!p.bot && p.ws && p.ws.readyState === 1) p.ws.send(msg);
   }
 
   humans() { return [...this.players.values()].filter((p) => !p.bot); }
@@ -118,16 +164,22 @@ class Room {
   pickTeam() { return this.teamCount('allies') <= this.teamCount('axis') ? 'allies' : 'axis'; }
 
   addPlayer(p) {
-    p.team = this.pickTeam();
+    const humans = (t) => [...this.players.values()].filter((q) => !q.bot && q.team === t).length;
+    p.team = humans('allies') <= humans('axis') ? 'allies' : 'axis';
     this.players.set(p.id, p);
-    this.spawn(p, Date.now());
+    if (!this.hostId) this.hostId = p.id;
+    if (this.state === 'playing') this.spawn(p, Date.now()); else this.equip(p);
     this.balanceBots();
+    this.sendLobby();
   }
 
   removePlayer(id) {
     this.players.delete(id);
     if (this.humans().length === 0) { rooms.delete(this.code); return; }
+    if (this.hostId === id) this.hostId = this.humans()[0].id;
     this.balanceBots();
+    this.sendLobby();
+    this.sendRoster();
   }
 
   balanceBots() {
@@ -138,10 +190,10 @@ class Room {
       const bots = members.filter((p) => p.bot);
       while (bots.length > want) this.players.delete(bots.pop().id);
       while (bots.length < want && this.players.size < MAX_PLAYERS_PER_ROOM) {
-        const b = createBot(team);
+        const b = createBot(team, new Set([...this.players.values()].map((q) => q.name)));
         bots.push(b);
         this.players.set(b.id, b);
-        this.spawn(b, Date.now());
+        if (this.state === 'playing') this.spawn(b, Date.now()); else this.equip(b);
       }
     }
   }
@@ -420,8 +472,10 @@ class Room {
 
   tick(now, dt) {
     this.tickCount++;
-    if (this.state === 'ended') {
-      if (now >= this.restartAt) this.reset();
+    if (this.state === 'lobby') {
+      // waiting for the host to start: nothing to simulate
+    } else if (this.state === 'ended') {
+      if (now >= this.restartAt) { if (this.lobby) this.backToLobby(); else this.reset(); }
     } else {
       for (const p of this.players.values()) {
         if (p.bot) { p.moveBudget = 1; botThink(this, p, now, dt); }
@@ -429,14 +483,14 @@ class Room {
         this.updatePlayer(p, now, dt);
       }
       this.updateNades(dt, now);
-      if (this.score.allies >= S.SCORE_LIMIT || this.score.axis >= S.SCORE_LIMIT || now >= this.endsAt) {
+      if (this.score.allies >= this.scoreLimit || this.score.axis >= this.scoreLimit || now >= this.endsAt) {
         this.state = 'ended';
-        this.restartAt = now + 12000;
+        this.restartAt = now + (this.lobby ? 10000 : 12000);
         const w = this.score.allies === this.score.axis ? 'draw' : this.score.allies > this.score.axis ? 'allies' : 'axis';
         this.events.push({ e: 'end', w });
       }
     }
-    if (this.tickCount % SEND_EVERY === 0) this.broadcast(now);
+    if (this.tickCount % (this.state === 'lobby' ? 30 : SEND_EVERY) === 0) this.broadcast(now);
     if (this.tickCount % 60 === 0) this.sendRoster();
   }
 
@@ -449,7 +503,7 @@ class Room {
     }
     const base = {
       t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, n.kind === 'rg' ? 1 : 0]), sc: [this.score.allies, this.score.axis],
-      tl: Math.max(0, this.endsAt - now), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
+      tl: Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
     };
     this.events = [];
     for (const p of this.players.values()) {
@@ -480,8 +534,10 @@ function basePlayer(name) {
   };
 }
 
-function createBot(team) {
-  const p = basePlayer(BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + ' [BOT]');
+function createBot(team, taken) {
+  const free = BOT_NAMES.filter((n) => !taken || !taken.has(n + ' [BOT]'));
+  const pool = free.length ? free : BOT_NAMES;
+  const p = basePlayer(pool[Math.floor(Math.random() * pool.length)] + ' [BOT]');
   const lo = BOT_LOADOUTS[Math.floor(Math.random() * BOT_LOADOUTS.length)];
   p.pendingLoadout = S.sanitizeLoadout({ ...lo, secondary: SECONDARIES[Math.floor(Math.random() * SECONDARIES.length)] });
   p.bot = { nextScan: 0, target: null, acquiredAt: 0, aimErr: 0, strafe: 1, strafeUntil: 0, nextPath: 0, lastPos: null, stuckCheck: 0 };
@@ -582,17 +638,35 @@ function connect(ws) {
     try { m = typeof raw === 'string' ? JSON.parse(raw) : JSON.parse(String(raw)); } catch (e) { return; }
     if (!m || typeof m.t !== 'string') return;
     const now = Date.now();
-    if (m.t === 'join' && !player) {
-      const name = String(m.name || 'Soldier').replace(/[^\w .\-']/g, '').trim().slice(0, 16) || 'Soldier';
-      const code = String(m.room || 'PUBLIC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'PUBLIC';
-      room = rooms.get(code);
-      if (!room) { room = new Room(code, S.clamp(m.bots | 0, 0, 6)); rooms.set(code, room); }
-      if (room.humans().length >= MAX_PLAYERS_PER_ROOM) { ws.send(JSON.stringify({ t: 'err', msg: 'Room is full' })); return; }
+    if (m.t === 'list') {
+      const list = [...rooms.values()].filter((r) => r.lobby && !r.priv).map((r) => r.info());
+      const quick = rooms.get('PUBLIC');
+      ws.send(JSON.stringify({ t: 'lobbies', list, quick: quick ? quick.humans().length : 0 }));
+      return;
+    }
+    if ((m.t === 'join' || m.t === 'create') && !player) {
+      const name = cleanText(m.name, 16, 'Soldier');
+      let code;
+      if (m.t === 'create') {
+        do { code = Array.from({ length: 5 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join(''); } while (rooms.has(code));
+        room = new Room(code, { lobby: true, name: m.lobbyName || name + "'s lobby", bots: m.bots, score: m.score, time: m.time, priv: m.priv });
+        rooms.set(code, room);
+      } else {
+        code = String(m.room || 'PUBLIC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'PUBLIC';
+        room = rooms.get(code);
+        if (!room) {
+          if (code !== 'PUBLIC' && code !== 'OFFLINE' && !m.quick) { ws.send(JSON.stringify({ t: 'err', msg: 'No lobby found with code ' + code + '.' })); room = null; return; }
+          room = new Room(code, { bots: m.bots == null ? 4 : m.bots });
+          rooms.set(code, room);
+        }
+      }
+      if (room.humans().length >= MAX_PLAYERS_PER_ROOM) { ws.send(JSON.stringify({ t: 'err', msg: 'That lobby is full.' })); room = null; return; }
       player = basePlayer(name);
       player.ws = ws;
       player.pendingLoadout = S.sanitizeLoadout(m.loadout);
       room.addPlayer(player);
-      ws.send(JSON.stringify({ t: 'welcome', id: player.id, code: room.code }));
+      ws.send(JSON.stringify({ t: 'welcome', id: player.id, code: room.code, lobby: room.lobby, state: room.state }));
+      room.sendLobby();
       room.sendRoster();
       return;
     }
@@ -610,13 +684,33 @@ function connect(ws) {
       case 'nade': room.throwNade(player, now); break;
       case 'rg': room.fireRifleNade(player, now); break;
       case 'loadout': player.pendingLoadout = S.sanitizeLoadout(m.loadout); break;
+      case 'ready':
+        if (room.state === 'lobby') { player.ready = !player.ready; room.sendLobby(); }
+        break;
+      case 'settings':
+        if (player.id === room.hostId && m.s && typeof m.s === 'object') { room.applySettings(m.s); room.balanceBots(); room.sendLobby(); }
+        break;
+      case 'start':
+        if (player.id === room.hostId && room.state === 'lobby') { room.reset(); room.sendLobby(); room.sendRoster(); }
+        break;
+      case 'kick': {
+        const target = room.players.get(m.id | 0);
+        if (player.id === room.hostId && target && !target.bot && target !== player) {
+          if (target.ws && target.ws.readyState === 1) target.ws.send(JSON.stringify({ t: 'kicked' }));
+          room.removePlayer(target.id);
+          if (target.ws && target.ws.close) try { target.ws.close(); } catch (e) { /* ignore */ }
+        }
+        break;
+      }
       case 'team': {
         const other = player.team === 'allies' ? 'axis' : 'allies';
-        if (room.teamCount(other) - (room.players.size - room.teamCount(other)) < 2 || room.humans().length < 2) {
+        const humansOther = [...room.players.values()].filter((q) => !q.bot && q.team === other).length;
+        if (room.state === 'lobby' ? humansOther < MAX_PLAYERS_PER_ROOM / 2 : (room.teamCount(other) - (room.players.size - room.teamCount(other)) < 2 || room.humans().length < 2)) {
           player.team = other;
           if (player.alive) { player.alive = false; player.respawnAt = now + RESPAWN_MS; player.killedBy = player.id; player.killedWith = 'Team change'; }
           room.balanceBots();
           room.sendRoster();
+          room.sendLobby();
         }
         break;
       }

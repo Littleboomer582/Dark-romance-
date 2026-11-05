@@ -97,7 +97,6 @@ function buildLoadout(el) {
 const menuLoadout = buildLoadout($('loadoutMenu'));
 const gameLoadout = buildLoadout($('loadoutGame'));
 $('name').value = loadSaved('fl_name', '');
-$('room').value = loadSaved('fl_room', '');
 let sens = loadSaved('fl_sens', 1);
 $('sens').value = sens; $('sensVal').textContent = (+sens).toFixed(2);
 $('sens').addEventListener('input', () => { sens = +$('sens').value; $('sensVal').textContent = sens.toFixed(2); save('fl_sens', sens); });
@@ -179,42 +178,102 @@ function localSocket() {
   return sock;
 }
 
-let offlineMode = false;
-function connect(offline) {
-  offlineMode = !!offline;
-  const name = $('name').value.trim() || 'Soldier';
-  const room = offline ? 'OFFLINE' : ($('room').value.trim() || 'PUBLIC');
-  save('fl_name', $('name').value.trim()); save('fl_room', $('room').value.trim()); save('fl_server', $('server').value.trim());
-  let bots = +$('bots').value;
-  if (offline) {
-    if (bots < 2) bots = 4;
-    ws = localSocket();
-  } else {
-    const url = serverUrl();
-    if (!url) { $('err').textContent = 'Enter your game server address for online play, or press PLAY OFFLINE VS BOTS.'; $('server').focus(); return; }
-    $('err').textContent = 'Connecting...';
-    try { ws = new WebSocket(url); } catch (e) { $('err').textContent = 'Could not connect: ' + e.message; return; }
-  }
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, room, bots, loadout }));
-  ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onMessage(m); };
-  ws.onclose = () => {
-    if (joined) showMenu(offlineMode ? '' : 'Disconnected from server.');
-    else $('err').textContent = 'Could not reach the game server.';
-    joined = false;
+let offlineMode = false, leaving = false, wsOpen = null, lobbyInfo = null, lastLobbyState = null;
+const playerName = () => { save('fl_name', $('name').value.trim()); return $('name').value.trim() || 'Soldier'; };
+
+function attach(sock) {
+  ws = sock;
+  sock.onmessage = (ev) => { if (ws !== sock) return; let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onMessage(m); };
+  sock.onclose = () => {
+    if (ws !== sock) return;
+    const wasJoined = joined;
+    ws = null; wsOpen = null; joined = false;
+    if (wasJoined || !$('lobbyScreen').classList.contains('hidden')) showMenu(leaving ? '' : 'Disconnected from server.');
+    else if (!leaving) showErr('Could not reach the game server.');
+    leaving = false;
   };
 }
+// Opens (or reuses) the connection to the online game server.
+function ensureOnline() {
+  if (ws && !offlineMode && wsOpen) return wsOpen;
+  if (ws) { leaving = true; ws.close(); }
+  const url = serverUrl();
+  if (!url) return Promise.reject(new Error('Enter your game server address above for online play, or choose OFFLINE VS BOTS.'));
+  save('fl_server', $('server').value.trim());
+  offlineMode = false;
+  let sock;
+  try { sock = new WebSocket(url); } catch (e) { return Promise.reject(new Error('Could not connect: ' + e.message)); }
+  attach(sock);
+  wsOpen = new Promise((res, rej) => {
+    sock.onopen = () => res();
+    sock.onerror = () => rej(new Error('Could not reach the game server at ' + url.replace(/^ws/, 'http').replace(/\/ws$/, '') + '.'));
+  });
+  wsOpen.catch(() => { if (ws === sock) { ws = null; wsOpen = null; } });
+  return wsOpen;
+}
+function online(action) {
+  initAudio();
+  showErr('Connecting...');
+  ensureOnline().then(() => { showErr(''); action(); }).catch((e) => showErr(e.message));
+}
+function playOffline() {
+  initAudio();
+  if (ws) { leaving = true; ws.close(); }
+  offlineMode = true;
+  const sock = localSocket();
+  attach(sock);
+  wsOpen = null;
+  sock.onopen = () => sock.send(JSON.stringify({ t: 'join', name: playerName(), room: 'OFFLINE', quick: true, bots: +$('offBots').value, loadout }));
+}
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+// Show an error message on whichever menu screen is visible.
+function showErr(msg) {
+  for (const id of ['lobbyScreen', 'createScreen', 'browseScreen', 'menu']) {
+    const el = $(id);
+    if (!el.classList.contains('hidden')) { el.querySelector('.err').textContent = msg; return; }
+  }
+  $('err').textContent = msg;
+}
+
+const SCREENS = ['menu', 'armory', 'createScreen', 'browseScreen', 'lobbyScreen'];
+function showScreen(id) {
+  for (const s2 of SCREENS) $(s2).classList.toggle('hidden', s2 !== id);
+  if (id) for (const s2 of ['hud', 'touch', 'pause', 'scoreboard', 'loadoutScreen']) $(s2).classList.add('hidden');
+  for (const s2 of SCREENS) { const e = $(s2).querySelector('.err'); if (e && s2 !== id) e.textContent = ''; }
+  if (browseTimer && id !== 'browseScreen') { clearInterval(browseTimer); browseTimer = null; }
+}
+
+function enterGame() {
+  showScreen(null);
+  $('hud').classList.remove('hidden');
+  if (isTouch) $('touch').classList.remove('hidden');
+  else if (!locked) { $('pause').classList.remove('hidden'); requestLock(); }
+}
+function enterLobby() {
+  if (document.pointerLockElement) document.exitPointerLock();
+  showScreen('lobbyScreen');
+  renderLobby();
+}
 
 function onMessage(m) {
   switch (m.t) {
     case 'welcome':
       myId = m.id; roomCode = m.code; joined = true; snaps = []; pending = []; you = null;
-      $('err').textContent = '';
-      $('menu').classList.add('hidden'); $('hud').classList.remove('hidden');
-      if (isTouch) $('touch').classList.remove('hidden');
-      else requestLock();
+      lastLobbyState = m.state;
+      if (m.lobby && m.state !== 'playing') enterLobby(); else enterGame();
       break;
-    case 'err': $('err').textContent = m.msg; break;
+    case 'lobby':
+      lobbyInfo = m;
+      if (!joined || !m.lobby) break;
+      if (m.state === 'playing' && lastLobbyState !== 'playing') enterGame();
+      else if (m.state === 'lobby' && lastLobbyState !== 'lobby') { enterLobby(); }
+      lastLobbyState = m.state;
+      renderLobby();
+      break;
+    case 'lobbies': renderLobbyList(m); break;
+    case 'kicked': leaving = true; showMenu('The host removed you from the lobby.'); break;
+    case 'err': showErr(m.msg); break;
     case 'r':
       roster.clear();
       for (const p of m.l) roster.set(p.i, p);
@@ -238,7 +297,7 @@ function onState(m) {
   snaps.push({ t: now, p: map });
   while (snaps.length > 30) snaps.shift();
   nadeState = m.n;
-  match.sc = m.sc; match.tl = m.tl; match.rs = m.rs;
+  match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb;
   if (match.st === 'ended' && m.st === 'playing') { match.winner = null; killfeed.length = 0; }
   match.st = m.st;
   you = m.you;
@@ -849,11 +908,12 @@ let moveStick = null;
 const lookPointers = new Map();
 const STICK_R = 60;
 
-const inGame = () => joined && $('loadoutScreen').classList.contains('hidden') && $('pause').classList.contains('hidden');
+const inGame = () => joined && $('loadoutScreen').classList.contains('hidden') && $('pause').classList.contains('hidden') && $('lobbyScreen').classList.contains('hidden');
 function requestLock() { if (!isTouch && canvas.requestPointerLock) { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ } } }
+document.addEventListener('pointerlockerror', () => { if (joined && inGame()) $('pause').classList.remove('hidden'); });
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
-  if (!locked && joined && !isTouch && $('loadoutScreen').classList.contains('hidden')) $('pause').classList.remove('hidden');
+  if (!locked && joined && !isTouch && $('loadoutScreen').classList.contains('hidden') && $('lobbyScreen').classList.contains('hidden')) $('pause').classList.remove('hidden');
   if (locked) $('pause').classList.add('hidden');
   mouseDown = mouseRight = false;
 });
@@ -950,7 +1010,7 @@ function toggleScores(force) {
 function renderScores() {
   const teams = { allies: [], axis: [] };
   for (const p of roster.values()) teams[p.t].push(p);
-  let html = `<h2>Room ${esc(roomCode)} &mdash; Team Deathmatch (first to ${S.SCORE_LIMIT})</h2><div class="sb">`;
+  let html = `<h2>Room ${esc(roomCode)} &mdash; Team Deathmatch (first to ${match.sl || S.SCORE_LIMIT})</h2><div class="sb">`;
   for (const t of ['allies', 'axis']) {
     teams[t].sort((a, b) => b.k - a.k || a.d - b.d);
     html += `<div class="${t}"><h3>${t.toUpperCase()} ${match.sc[t === 'allies' ? 0 : 1]}</h3><table><tr><th>Soldier</th><th>K</th><th>D</th></tr>`;
@@ -962,23 +1022,37 @@ function renderScores() {
 function toggleLoadout(force) {
   const el = $('loadoutScreen');
   const show = force === undefined ? el.classList.contains('hidden') : force;
+  const inLobby = !$('lobbyScreen').classList.contains('hidden');
   el.classList.toggle('hidden', !show);
-  if (show) { gameLoadout.render(); if (document.pointerLockElement) document.exitPointerLock(); }
-  else if (joined && !isTouch) requestLock();
+  $('switchTeam').classList.toggle('hidden', inLobby);
+  $('leave').classList.toggle('hidden', inLobby);
+  $('loadoutTag').textContent = inLobby ? 'Your loadout for the next match.' : 'Changes apply on your next respawn.';
+  if (show) { $('pause').classList.add('hidden'); gameLoadout.render(); if (document.pointerLockElement) document.exitPointerLock(); }
+  else if (joined && !isTouch && !inLobby) requestLock();
   fireBtns.clear(); mouseDown = false;
 }
-$('loadoutSave').addEventListener('click', () => { send({ t: 'loadout', loadout }); toggleLoadout(false); centerMsg = { text: 'Loadout saved\nApplies on respawn', t: performance.now() }; });
+$('loadoutSave').addEventListener('click', () => {
+  const inLobby = !$('lobbyScreen').classList.contains('hidden');
+  send({ t: 'loadout', loadout }); toggleLoadout(false);
+  if (!inLobby) centerMsg = { text: 'Loadout saved\nApplies on respawn', t: performance.now() };
+});
 $('switchTeam').addEventListener('click', () => { send({ t: 'team' }); toggleLoadout(false); });
-$('leave').addEventListener('click', () => { if (ws) ws.close(); });
+$('leave').addEventListener('click', leaveMatch);
+function leaveMatch() { leaving = true; if (ws) ws.close(); else showMenu(''); }
 
+function loadoutSummary() {
+  const p = S.WEAPONS[loadout.primary], sc = S.WEAPONS[loadout.secondary];
+  const a = loadout.atts.map((x) => S.ATTACHMENTS[x].name).join(' + ');
+  $('loadoutSummary').innerHTML = `Loadout: <b>${esc(p.name)}</b>${a ? ' (' + esc(a) + ')' : ''} &middot; <b>${esc(sc.name)}</b>`;
+}
 function showMenu(err) {
   joined = false;
+  lobbyInfo = null; lastLobbyState = null;
   if (document.pointerLockElement) document.exitPointerLock();
   for (const id of [...soldiers.keys()]) removeSoldier(id);
-  $('menu').classList.remove('hidden');
-  for (const id of ['hud', 'touch', 'loadoutScreen', 'scoreboard', 'pause']) $(id).classList.add('hidden');
+  showScreen('menu');
   $('err').textContent = err || '';
-  menuLoadout.render();
+  loadoutSummary();
 }
 function goFullscreen(toggle) {
   const d = document;
@@ -987,17 +1061,122 @@ function goFullscreen(toggle) {
   const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : null;
   if (p && p.then) p.then(() => { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); }).catch(() => {});
 }
-function deploy(offline) {
-  initAudio();
-  if (isTouch && !matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) goFullscreen(false);
-  connect(offline);
-}
-$('deploy').addEventListener('click', () => deploy(false));
-$('offline').addEventListener('click', () => deploy(true));
+function phoneFullscreen() { if (isTouch && !matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) goFullscreen(false); }
+
+// ---- main menu
+$('btnQuick').addEventListener('click', () => { phoneFullscreen(); online(() => send({ t: 'join', name: playerName(), room: 'PUBLIC', quick: true, bots: 4, loadout })); });
+$('btnCreate').addEventListener('click', () => { showScreen('createScreen'); if (!$('lobbyName').value) $('lobbyName').placeholder = playerName() + "'s lobby"; });
+$('btnBrowse').addEventListener('click', () => { showScreen('browseScreen'); refreshLobbies(); browseTimer = setInterval(refreshLobbies, 4000); });
+$('offline').addEventListener('click', () => { phoneFullscreen(); playOffline(); });
+$('btnArmory').addEventListener('click', () => { showScreen('armory'); menuLoadout.render(); });
+$('armoryBack').addEventListener('click', () => showMenu(''));
 $('server').value = loadSaved('fl_server', '');
 if (servedOverHttp) $('server').placeholder = 'Leave empty to use this site (' + location.host + ')';
 if (!window.Sim) $('offline').classList.add('hidden');
-$('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('deploy').click(); });
+$('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnQuick').click(); });
+
+// ---- create lobby
+const BOT_OPTS = [0, 1, 2, 3, 4, 5, 6, 7], SCORE_OPTS = [25, 50, 75, 100, 150], TIME_OPTS = [5, 10, 15, 20, 30];
+function fillSelect(el, opts, val, label) { el.innerHTML = opts.map((o) => `<option value="${o}"${o === val ? ' selected' : ''}>${label(o)}</option>`).join(''); }
+const botLabel = (o) => o === 0 ? 'No bots' : o + ' per team';
+fillSelect($('cBots'), BOT_OPTS, 4, botLabel);
+fillSelect($('cScore'), SCORE_OPTS, 50, (o) => o + ' kills');
+fillSelect($('cTime'), TIME_OPTS, 10, (o) => o + ' min');
+$('createBack').addEventListener('click', () => showMenu(''));
+$('createGo').addEventListener('click', () => {
+  phoneFullscreen();
+  online(() => send({ t: 'create', name: playerName(), lobbyName: $('lobbyName').value.trim() || $('lobbyName').placeholder,
+    bots: +$('cBots').value, score: +$('cScore').value, time: +$('cTime').value, priv: $('cPriv').checked, loadout }));
+});
+
+// ---- lobby browser
+let browseTimer = null;
+function refreshLobbies() { online(() => send({ t: 'list' })); }
+function joinLobby(code) {
+  code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!code) { showErr('Type a lobby code first.'); return; }
+  phoneFullscreen();
+  online(() => send({ t: 'join', name: playerName(), room: code, loadout }));
+}
+function renderLobbyList(m) {
+  const el = $('lobbyList');
+  const rows = m.list.map((l) => `<div class="lobby-row"><div class="info"><div class="nm">${esc(l.name)}${l.state === 'lobby' ? '<span class="badge">Waiting</span>' : '<span class="badge live">In match</span>'}</div>
+    <div class="meta">Host ${esc(l.host)} &middot; ${l.players}/${l.max} players &middot; ${l.bots ? l.bots + ' bots/team' : 'no bots'} &middot; first to ${l.score} &middot; ${l.time} min &middot; code ${esc(l.code)}</div></div>
+    <button data-code="${esc(l.code)}"${l.players >= l.max ? ' disabled' : ''}>JOIN</button></div>`);
+  rows.push(`<div class="lobby-row"><div class="info"><div class="nm">Quick Play</div><div class="meta">Public drop-in match &middot; ${m.quick} playing</div></div><button data-quick="1">PLAY</button></div>`);
+  el.innerHTML = (m.list.length ? '' : '<p class="tag">No open lobbies right now. Create one from the main menu!</p>') + rows.join('');
+  for (const b of el.querySelectorAll('button[data-code]')) b.addEventListener('click', () => joinLobby(b.dataset.code));
+  for (const b of el.querySelectorAll('button[data-quick]')) b.addEventListener('click', () => $('btnQuick').click());
+}
+$('joinGo').addEventListener('click', () => joinLobby($('joinCode').value));
+$('joinCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinLobby($('joinCode').value); });
+$('browseRefresh').addEventListener('click', refreshLobbies);
+$('browseBack').addEventListener('click', () => showMenu(''));
+
+// ---- lobby room
+function renderLobby() {
+  const L = lobbyInfo;
+  if (!L || $('lobbyScreen').classList.contains('hidden')) return;
+  const isHost = L.host === myId;
+  const me = L.players.find((p) => p.i === myId);
+  const humans = L.players.filter((p) => !p.b);
+  const ready = humans.filter((p) => p.r).length;
+  $('lbName').textContent = L.name;
+  $('lbCode').textContent = L.code;
+  $('lbPriv').innerHTML = L.priv ? '<span class="badge">Private</span>' : '<span class="badge">Public</span>';
+  $('lbStatus').textContent = L.state === 'lobby'
+    ? `${ready} of ${humans.length} ready · ${isHost ? 'You are the host: press START MATCH when everyone is set.' : 'Waiting for the host to start the match...'}`
+    : L.state === 'playing' ? 'Match in progress...' : 'Match over: returning to the lobby...';
+  let html = '';
+  for (const t of ['allies', 'axis']) {
+    const list = L.players.filter((p) => p.t === t).sort((a, b) => a.b - b.b);
+    html += `<div class="${t}"><h3>${t.toUpperCase()} <span class="tagx">${((n) => n + (n === 1 ? ' player' : ' players'))(list.filter((p) => !p.b).length)}</span></h3><table>`;
+    for (const p of list) {
+      html += `<tr class="${p.i === myId ? 'me' : ''}"><td>${esc(p.n.replace(' [BOT]', ''))}${p.i === L.host ? '<span class="tagx">&#9733; host</span>' : ''}${p.b ? '<span class="tagx">bot</span>' : ''}</td>`
+        + `<td class="rd">${p.b ? '' : p.r ? '&#10003; READY' : ''}</td>`
+        + `<td class="kick">${isHost && !p.b && p.i !== myId ? `<button data-kick="${p.i}" title="Remove from lobby">&#10005;</button>` : ''}</td></tr>`;
+    }
+    if (!list.length) html += '<tr><td class="tagx">Empty</td></tr>';
+    html += '</table></div>';
+  }
+  $('lbTeams').innerHTML = html;
+  for (const b of $('lbTeams').querySelectorAll('button[data-kick]')) b.addEventListener('click', () => send({ t: 'kick', id: +b.dataset.kick }));
+  // settings
+  const st = L.settings;
+  const box = $('lbSettings');
+  if (isHost) {
+    if (!box.dataset.host || document.activeElement === null || !box.contains(document.activeElement)) {
+      box.dataset.host = '1';
+      box.innerHTML = `<div class="lo-label">Match settings (host)</div><div class="row">
+        <label>Bots per team<select id="hBots"></select></label><label>Score limit<select id="hScore"></select></label><label>Time limit<select id="hTime"></select></label></div>
+        <label class="check"><input type="checkbox" id="hPriv"${L.priv ? ' checked' : ''}> Private lobby</label>`;
+      fillSelect($('hBots'), BOT_OPTS, st.bots, botLabel);
+      fillSelect($('hScore'), SCORE_OPTS, st.score, (o) => o + ' kills');
+      fillSelect($('hTime'), TIME_OPTS, st.time, (o) => o + ' min');
+      const push = () => send({ t: 'settings', s: { bots: +$('hBots').value, score: +$('hScore').value, time: +$('hTime').value, priv: $('hPriv').checked } });
+      for (const id of ['hBots', 'hScore', 'hTime', 'hPriv']) $(id).addEventListener('change', push);
+    }
+  } else {
+    box.dataset.host = '';
+    box.innerHTML = `<div class="lo-label">Match settings</div><div class="ro">${st.bots ? st.bots + ' bots per team' : 'No bots'} &middot; first to ${st.score} kills &middot; ${st.time} minute limit</div>`;
+  }
+  const inLobby = L.state === 'lobby';
+  $('lbReady').classList.toggle('hidden', !inLobby);
+  $('lbReady').textContent = me && me.r ? 'NOT READY' : 'READY';
+  $('lbReady').classList.toggle('alt', !!(me && me.r));
+  $('lbStart').classList.toggle('hidden', !(isHost && inLobby));
+}
+$('lbReady').addEventListener('click', () => send({ t: 'ready' }));
+$('lbStart').addEventListener('click', () => { initAudio(); send({ t: 'start' }); });
+$('lbTeam').addEventListener('click', () => send({ t: 'team' }));
+$('lbLoadout').addEventListener('click', () => toggleLoadout(true));
+$('lbLeave').addEventListener('click', leaveMatch);
+$('lbCopy').addEventListener('click', () => {
+  const code = lobbyInfo ? lobbyInfo.code : '';
+  const done = () => { $('lbCopy').textContent = 'Copied!'; setTimeout(() => { $('lbCopy').textContent = 'Copy'; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(done, () => {}); else done();
+});
+loadoutSummary();
 
 let deferredPrompt = null;
 addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; $('install').classList.remove('hidden'); });
@@ -1055,7 +1234,7 @@ function frame(now) {
   soundsThisFrame = 0;
   $('rotate').classList.toggle('hidden', !(joined && isTouch && H > W));
 
-  if (!joined) { renderAttract(now); return; }
+  if (!joined || !$('lobbyScreen').classList.contains('hidden')) { renderAttract(now); return; }
   const players = interpPlayers(now);
   const st = myStats();
   const alive = !!(you && you.alive && match.st === 'playing');
@@ -1388,7 +1567,7 @@ function updateHud(now) {
   if (match.st === 'ended') {
     const w = match.winner;
     c = (w === 'draw' ? 'DRAW' : (w === you.team ? 'VICTORY' : 'DEFEAT') + '\n' + (w || '').toUpperCase() + ' WIN') +
-      `\n<small>${match.sc[0]} - ${match.sc[1]} · next match in ${Math.ceil(match.rs / 1000)}s</small>`;
+      `\n<small>${match.sc[0]} - ${match.sc[1]} · ${match.lb ? 'back to the lobby' : 'next match'} in ${Math.ceil(match.rs / 1000)}s</small>`;
   } else if (!you.alive) {
     const by = you.kb === myId ? 'You' : nameOf(you.kb);
     c = (you.kw === 'Team change' ? 'SWITCHING TEAMS' : 'KILLED BY ' + esc(by).toUpperCase() + `\n<small>${esc(you.kw || '')}</small>`) +

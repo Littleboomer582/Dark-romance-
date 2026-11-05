@@ -5,7 +5,12 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
 ## Features
 
 - **Online team deathmatch**: first team to 50 kills, or the leading team after 10 minutes. Up to 16 players per room.
-- **Rooms**: type the same room code to play with friends. The default room is `PUBLIC`.
+- **Main menu with lobbies**:
+  - **Quick Play** drops you into a public match.
+  - **Create Lobby** makes you the host. You set bots per team, score limit and time limit, and choose public or private. You get a 5-letter code to share with friends.
+  - **Find Lobby** lists open lobbies (or join by code).
+  - In the lobby, players pick a team and press **Ready**, and the host presses **Start Match**. After the match everyone returns to the lobby for a rematch.
+  - The host can remove players. If the host leaves, another player becomes host.
 - **Bots** fill empty slots, so you can play alone or with a few friends. You pick 0–6 bots per team when you create a room, and a bot leaves when a real player joins.
 - **WWII-era weapons**:
   - SMG: Thompson, MP40, PPSh-41, Type 100

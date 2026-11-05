@@ -21,34 +21,101 @@
   <div id="menu" class="screen">
     <div class="panel">
       <h1>FRONTLINE <span>1945</span></h1>
-      <p class="tag">Online team deathmatch &mdash; Allies vs Axis</p>
+      <p class="tag">Team deathmatch &mdash; Allies vs Axis</p>
       <div class="row">
         <label>Callsign<input id="name" maxlength="16" placeholder="Soldier"></label>
-        <label>Room code<input id="room" maxlength="8" placeholder="PUBLIC"></label>
       </div>
       <div class="row" id="serverRow">
         <label>Game server (for online play)<input id="server" placeholder="https://your-game-server.example.com" autocomplete="url"></label>
       </div>
-      <div class="row">
-        <label>Bots per team (if you create the room)
-          <select id="bots">
-            <option value="0">0 &mdash; humans only</option><option value="2">2</option><option value="3">3</option>
-            <option value="4" selected>4</option><option value="5">5</option><option value="6">6</option>
-          </select>
-        </label>
+      <div class="menu-grid">
+        <button id="btnQuick" class="big">QUICK PLAY</button>
+        <button id="btnCreate" class="big">CREATE LOBBY</button>
+        <button id="btnBrowse" class="big">FIND LOBBY</button>
+        <button id="offline" class="big alt">OFFLINE VS BOTS</button>
       </div>
+      <div id="loadoutSummary" class="lo-summary"></div>
+      <button id="btnArmory" class="ghost">LOADOUT &amp; SETTINGS</button>
+      <button id="install" class="ghost hidden">Install as app</button>
+      <p class="help" id="controlsHelp"></p>
+      <p class="err" id="err"></p>
+    </div>
+  </div>
+
+  <!-- Loadout & settings (from the main menu) -->
+  <div id="armory" class="screen hidden">
+    <div class="panel">
+      <h2>Loadout</h2>
+      <div id="loadoutMenu"></div>
+      <h2>Settings</h2>
       <div class="row">
         <label>Look sensitivity <span id="sensVal"></span>
           <input id="sens" type="range" min="0.2" max="3" step="0.05" value="1">
         </label>
+        <label>Offline bots per team
+          <select id="offBots"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select>
+        </label>
       </div>
-      <h2>Loadout</h2>
-      <div id="loadoutMenu"></div>
-      <button id="deploy" class="big">DEPLOY ONLINE</button>
-      <button id="offline" class="big alt">PLAY OFFLINE VS BOTS</button>
-      <button id="install" class="ghost hidden">Install as app</button>
-      <p class="help" id="controlsHelp"></p>
-      <p class="err" id="err"></p>
+      <button id="armoryBack" class="big">DONE</button>
+    </div>
+  </div>
+
+  <!-- Create lobby -->
+  <div id="createScreen" class="screen hidden">
+    <div class="panel">
+      <h2>Create Lobby</h2>
+      <p class="tag">You will be the host. Share the lobby code with friends so they can join.</p>
+      <div class="row"><label>Lobby name<input id="lobbyName" maxlength="24" placeholder="My lobby"></label></div>
+      <div class="row">
+        <label>Bots per team<select id="cBots"></select></label>
+        <label>Score limit<select id="cScore"></select></label>
+        <label>Time limit<select id="cTime"></select></label>
+      </div>
+      <label class="check"><input type="checkbox" id="cPriv"> Private &mdash; hidden from the lobby list, join by code only</label>
+      <button id="createGo" class="big">CREATE</button>
+      <button id="createBack" class="ghost">Back</button>
+      <p class="err"></p>
+    </div>
+  </div>
+
+  <!-- Lobby browser -->
+  <div id="browseScreen" class="screen hidden">
+    <div class="panel wide">
+      <h2>Find Lobby</h2>
+      <div class="row joinrow">
+        <input id="joinCode" maxlength="8" placeholder="Enter lobby code">
+        <button id="joinGo" class="big small">JOIN</button>
+      </div>
+      <div class="lo-label">Open lobbies</div>
+      <div id="lobbyList" class="lobby-list"><p class="tag">Loading...</p></div>
+      <div class="row">
+        <button id="browseRefresh" class="ghost">Refresh</button>
+        <button id="browseBack" class="ghost">Back</button>
+      </div>
+      <p class="err"></p>
+    </div>
+  </div>
+
+  <!-- Lobby room -->
+  <div id="lobbyScreen" class="screen hidden">
+    <div class="panel wide">
+      <h2 id="lbName">Lobby</h2>
+      <p class="tag">Lobby code <b id="lbCode" class="code"></b> <button id="lbCopy" class="mini">Copy</button> <span id="lbPriv"></span></p>
+      <p id="lbStatus" class="status"></p>
+      <div id="lbTeams" class="sb"></div>
+      <div id="lbSettings" class="lb-settings"></div>
+      <p class="err"></p>
+      <div class="lb-actions">
+        <div class="row">
+          <button id="lbReady" class="big">READY</button>
+          <button id="lbStart" class="big hidden">START MATCH</button>
+        </div>
+        <div class="row">
+          <button id="lbTeam" class="ghost">Switch team</button>
+          <button id="lbLoadout" class="ghost">Loadout</button>
+          <button id="lbLeave" class="ghost">Leave lobby</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -56,7 +123,7 @@
   <div id="loadoutScreen" class="screen hidden">
     <div class="panel">
       <h2>Change Loadout</h2>
-      <p class="tag">Changes apply on your next respawn.</p>
+      <p class="tag" id="loadoutTag">Changes apply on your next respawn.</p>
       <div id="loadoutGame"></div>
       <div class="row">
         <button id="loadoutSave" class="big">SAVE</button>

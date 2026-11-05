@@ -45,6 +45,50 @@ button { font-family: inherit; cursor: pointer; }
 button.big { width: 100%; margin-top: 14px; padding: 14px; font-size: 20px; letter-spacing: 4px; font-weight: bold;
   background: linear-gradient(#8a6a2a, #5d4719); color: #fff4d6; border: 1px solid #c79a45; border-radius: 8px; }
 button.big:active { transform: translateY(1px); }
+.menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+.menu-grid button.big { margin-top: 0; font-size: 17px; letter-spacing: 2px; padding: 16px 8px; }
+@media (max-width: 520px) { .menu-grid { grid-template-columns: 1fr; } }
+.lo-summary { margin-top: 14px; font-size: 13px; color: var(--muted); text-align: center; }
+.lo-summary b { color: var(--text); }
+label.check { flex-direction: row; align-items: center; gap: 8px; margin: 4px 0 6px; font-size: 13px; }
+label.check input { width: 18px; height: 18px; }
+.joinrow { align-items: stretch; }
+.joinrow input { flex: 1 1 160px; text-transform: uppercase; letter-spacing: 3px; font-size: 17px; }
+button.big.small { flex: 0 0 auto; width: auto; margin-top: 0; padding: 10px 22px; font-size: 16px; }
+.lobby-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; min-height: 60px; }
+.lobby-row { display: flex; align-items: center; gap: 10px; background: #12110c; border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; }
+.lobby-row .info { flex: 1; min-width: 0; }
+.lobby-row .nm { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lobby-row .meta { font-size: 12px; color: var(--muted); }
+.lobby-row button { flex: 0 0 auto; background: linear-gradient(#8a6a2a, #5d4719); color: #fff4d6; border: 1px solid #c79a45; border-radius: 6px; padding: 8px 16px; font-weight: bold; }
+.badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); margin-left: 6px; vertical-align: 1px; }
+.badge.live { border-color: #c0392b; color: #ff9a8a; }
+.code { font-size: 22px; letter-spacing: 4px; color: var(--accent); vertical-align: -2px; }
+button.mini { background: #12110c; color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 3px 9px; font-size: 12px; }
+.status { margin: 0 0 10px; font-size: 14px; }
+.sb td .tagx { font-size: 11px; color: var(--muted); margin-left: 5px; }
+.sb td.rd { color: #8fd16a; font-weight: bold; width: 92px; text-align: right; white-space: nowrap; }
+.sb td.kick { width: 30px; text-align: right; }
+.sb td.kick button { background: transparent; color: #ff8a7a; border: 1px solid #6a3a30; border-radius: 4px; padding: 1px 7px; cursor: pointer; }
+.lb-settings { margin: 12px 0 4px; }
+.lb-actions { position: sticky; bottom: -20px; margin: 0 -22px -20px; padding: 4px 22px 12px; background: #1c1b14; z-index: 2; border-top: 1px solid var(--line); }
+.lb-actions button.ghost { background: #1c1b14; }
+.lb-actions .row { margin-bottom: 0; }
+.lb-actions .row + .row { margin-top: -4px; }
+@media (max-height: 520px) {
+  .screen { padding: 8px; }
+  .panel { padding: 12px 16px; }
+  .lb-actions { bottom: -12px; margin: 0 -16px -12px; padding: 2px 16px 8px; }
+  h2 { margin: 4px 0 4px; }
+  .code { font-size: 18px; }
+  .sb td { padding: 3px 6px; }
+  .sb h3 { font-size: 15px; margin-bottom: 2px; }
+  button.big { padding: 10px; font-size: 16px; margin-top: 8px; }
+  button.ghost { padding: 8px; margin-top: 6px; }
+  .tag, .status { margin-bottom: 6px; }
+}
+.lb-settings .row { margin-bottom: 4px; }
+.lb-settings .ro { font-size: 13px; color: var(--muted); }
 button.big.alt { background: linear-gradient(#4a5a34, #2f3a20); border-color: #7f9a55; font-size: 17px; }
 button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
 .help { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 12px 0 0; }
@@ -128,34 +172,101 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
   <div id="menu" class="screen">
     <div class="panel">
       <h1>FRONTLINE <span>1945</span></h1>
-      <p class="tag">Online team deathmatch &mdash; Allies vs Axis</p>
+      <p class="tag">Team deathmatch &mdash; Allies vs Axis</p>
       <div class="row">
         <label>Callsign<input id="name" maxlength="16" placeholder="Soldier"></label>
-        <label>Room code<input id="room" maxlength="8" placeholder="PUBLIC"></label>
       </div>
       <div class="row" id="serverRow">
         <label>Game server (for online play)<input id="server" placeholder="https://your-game-server.example.com" autocomplete="url"></label>
       </div>
-      <div class="row">
-        <label>Bots per team (if you create the room)
-          <select id="bots">
-            <option value="0">0 &mdash; humans only</option><option value="2">2</option><option value="3">3</option>
-            <option value="4" selected>4</option><option value="5">5</option><option value="6">6</option>
-          </select>
-        </label>
+      <div class="menu-grid">
+        <button id="btnQuick" class="big">QUICK PLAY</button>
+        <button id="btnCreate" class="big">CREATE LOBBY</button>
+        <button id="btnBrowse" class="big">FIND LOBBY</button>
+        <button id="offline" class="big alt">OFFLINE VS BOTS</button>
       </div>
+      <div id="loadoutSummary" class="lo-summary"></div>
+      <button id="btnArmory" class="ghost">LOADOUT &amp; SETTINGS</button>
+      <button id="install" class="ghost hidden">Install as app</button>
+      <p class="help" id="controlsHelp"></p>
+      <p class="err" id="err"></p>
+    </div>
+  </div>
+
+  <!-- Loadout & settings (from the main menu) -->
+  <div id="armory" class="screen hidden">
+    <div class="panel">
+      <h2>Loadout</h2>
+      <div id="loadoutMenu"></div>
+      <h2>Settings</h2>
       <div class="row">
         <label>Look sensitivity <span id="sensVal"></span>
           <input id="sens" type="range" min="0.2" max="3" step="0.05" value="1">
         </label>
+        <label>Offline bots per team
+          <select id="offBots"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select>
+        </label>
       </div>
-      <h2>Loadout</h2>
-      <div id="loadoutMenu"></div>
-      <button id="deploy" class="big">DEPLOY ONLINE</button>
-      <button id="offline" class="big alt">PLAY OFFLINE VS BOTS</button>
-      <button id="install" class="ghost hidden">Install as app</button>
-      <p class="help" id="controlsHelp"></p>
-      <p class="err" id="err"></p>
+      <button id="armoryBack" class="big">DONE</button>
+    </div>
+  </div>
+
+  <!-- Create lobby -->
+  <div id="createScreen" class="screen hidden">
+    <div class="panel">
+      <h2>Create Lobby</h2>
+      <p class="tag">You will be the host. Share the lobby code with friends so they can join.</p>
+      <div class="row"><label>Lobby name<input id="lobbyName" maxlength="24" placeholder="My lobby"></label></div>
+      <div class="row">
+        <label>Bots per team<select id="cBots"></select></label>
+        <label>Score limit<select id="cScore"></select></label>
+        <label>Time limit<select id="cTime"></select></label>
+      </div>
+      <label class="check"><input type="checkbox" id="cPriv"> Private &mdash; hidden from the lobby list, join by code only</label>
+      <button id="createGo" class="big">CREATE</button>
+      <button id="createBack" class="ghost">Back</button>
+      <p class="err"></p>
+    </div>
+  </div>
+
+  <!-- Lobby browser -->
+  <div id="browseScreen" class="screen hidden">
+    <div class="panel wide">
+      <h2>Find Lobby</h2>
+      <div class="row joinrow">
+        <input id="joinCode" maxlength="8" placeholder="Enter lobby code">
+        <button id="joinGo" class="big small">JOIN</button>
+      </div>
+      <div class="lo-label">Open lobbies</div>
+      <div id="lobbyList" class="lobby-list"><p class="tag">Loading...</p></div>
+      <div class="row">
+        <button id="browseRefresh" class="ghost">Refresh</button>
+        <button id="browseBack" class="ghost">Back</button>
+      </div>
+      <p class="err"></p>
+    </div>
+  </div>
+
+  <!-- Lobby room -->
+  <div id="lobbyScreen" class="screen hidden">
+    <div class="panel wide">
+      <h2 id="lbName">Lobby</h2>
+      <p class="tag">Lobby code <b id="lbCode" class="code"></b> <button id="lbCopy" class="mini">Copy</button> <span id="lbPriv"></span></p>
+      <p id="lbStatus" class="status"></p>
+      <div id="lbTeams" class="sb"></div>
+      <div id="lbSettings" class="lb-settings"></div>
+      <p class="err"></p>
+      <div class="lb-actions">
+        <div class="row">
+          <button id="lbReady" class="big">READY</button>
+          <button id="lbStart" class="big hidden">START MATCH</button>
+        </div>
+        <div class="row">
+          <button id="lbTeam" class="ghost">Switch team</button>
+          <button id="lbLoadout" class="ghost">Loadout</button>
+          <button id="lbLeave" class="ghost">Leave lobby</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -163,7 +274,7 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
   <div id="loadoutScreen" class="screen hidden">
     <div class="panel">
       <h2>Change Loadout</h2>
-      <p class="tag">Changes apply on your next respawn.</p>
+      <p class="tag" id="loadoutTag">Changes apply on your next respawn.</p>
       <div id="loadoutGame"></div>
       <div class="row">
         <button id="loadoutSave" class="big">SAVE</button>
@@ -672,27 +783,73 @@ function makeGun(id, atts) {
   return { id, stats, ammo: stats.mag, reserve: stats.reserve };
 }
 
+const SCORE_OPTIONS = [25, 50, 75, 100, 150];
+const TIME_OPTIONS = [5, 10, 15, 20, 30];
+function cleanText(v, max, def) { return String(v == null ? '' : v).replace(/[^\w .\-'!?#&]/g, '').trim().slice(0, max) || def; }
+
 class Room {
-  constructor(code, botsPerTeam) {
+  // opts: { name, bots, score, time, priv, lobby }
+  constructor(code, opts) {
     this.code = code;
-    this.botsPerTeam = botsPerTeam;
     this.players = new Map();
     this.nades = [];
     this.events = [];
     this.tickCount = 0;
-    this.reset();
+    this.lobby = !!opts.lobby;
+    this.hostId = 0;
+    this.applySettings(opts);
+    this.name = cleanText(opts.name, 24, this.lobby ? 'Lobby ' + code : 'Quick Play');
+    this.score = { allies: 0, axis: 0 };
+    if (this.lobby) { this.state = 'lobby'; this.endsAt = 0; } else this.reset();
+  }
+
+  applySettings(o) {
+    if (o.bots != null) this.botsPerTeam = S.clamp(o.bots | 0, 0, 7);
+    if (this.botsPerTeam == null) this.botsPerTeam = 4;
+    if (SCORE_OPTIONS.includes(+o.score)) this.scoreLimit = +o.score;
+    if (!this.scoreLimit) this.scoreLimit = S.SCORE_LIMIT;
+    if (TIME_OPTIONS.includes(+o.time)) this.matchMs = +o.time * 60000;
+    if (!this.matchMs) this.matchMs = S.MATCH_MS;
+    if (o.priv != null) this.priv = !!o.priv;
+    if (o.name != null && this.lobby) this.name = cleanText(o.name, 24, this.name || 'Lobby');
   }
 
   reset() {
     const now = Date.now();
     this.score = { allies: 0, axis: 0 };
     this.state = 'playing';
-    this.endsAt = now + S.MATCH_MS;
+    this.endsAt = now + this.matchMs;
     this.nades = [];
     for (const p of this.players.values()) {
       p.kills = 0; p.deaths = 0;
       this.spawn(p, now);
     }
+  }
+
+  backToLobby() {
+    this.state = 'lobby';
+    this.nades = [];
+    for (const p of this.players.values()) { p.alive = false; p.respawnAt = Infinity; p.ready = false; p.input.fire = false; }
+    this.sendLobby();
+  }
+
+  // give a player their guns without putting them on the battlefield (lobby)
+  equip(p) {
+    p.loadout = p.pendingLoadout;
+    p.guns = [makeGun(p.loadout.primary, p.loadout.atts), makeGun(p.loadout.secondary, p.loadout.secAtts)];
+    p.slot = 0; p.alive = false; p.respawnAt = Infinity;
+  }
+
+  info() {
+    return { code: this.code, name: this.name, host: (this.players.get(this.hostId) || {}).name || '', players: this.humans().length,
+      max: MAX_PLAYERS_PER_ROOM, bots: this.botsPerTeam, state: this.state, score: this.scoreLimit, time: this.matchMs / 60000 };
+  }
+
+  sendLobby() {
+    const msg = JSON.stringify({ t: 'lobby', code: this.code, name: this.name, host: this.hostId, state: this.state, lobby: this.lobby, priv: !!this.priv,
+      settings: { bots: this.botsPerTeam, score: this.scoreLimit, time: this.matchMs / 60000 },
+      players: [...this.players.values()].map((p) => ({ i: p.id, n: p.name, t: p.team, b: p.bot ? 1 : 0, r: p.ready ? 1 : 0 })) });
+    for (const p of this.players.values()) if (!p.bot && p.ws && p.ws.readyState === 1) p.ws.send(msg);
   }
 
   humans() { return [...this.players.values()].filter((p) => !p.bot); }
@@ -702,16 +859,22 @@ class Room {
   pickTeam() { return this.teamCount('allies') <= this.teamCount('axis') ? 'allies' : 'axis'; }
 
   addPlayer(p) {
-    p.team = this.pickTeam();
+    const humans = (t) => [...this.players.values()].filter((q) => !q.bot && q.team === t).length;
+    p.team = humans('allies') <= humans('axis') ? 'allies' : 'axis';
     this.players.set(p.id, p);
-    this.spawn(p, Date.now());
+    if (!this.hostId) this.hostId = p.id;
+    if (this.state === 'playing') this.spawn(p, Date.now()); else this.equip(p);
     this.balanceBots();
+    this.sendLobby();
   }
 
   removePlayer(id) {
     this.players.delete(id);
     if (this.humans().length === 0) { rooms.delete(this.code); return; }
+    if (this.hostId === id) this.hostId = this.humans()[0].id;
     this.balanceBots();
+    this.sendLobby();
+    this.sendRoster();
   }
 
   balanceBots() {
@@ -722,10 +885,10 @@ class Room {
       const bots = members.filter((p) => p.bot);
       while (bots.length > want) this.players.delete(bots.pop().id);
       while (bots.length < want && this.players.size < MAX_PLAYERS_PER_ROOM) {
-        const b = createBot(team);
+        const b = createBot(team, new Set([...this.players.values()].map((q) => q.name)));
         bots.push(b);
         this.players.set(b.id, b);
-        this.spawn(b, Date.now());
+        if (this.state === 'playing') this.spawn(b, Date.now()); else this.equip(b);
       }
     }
   }
@@ -1004,8 +1167,10 @@ class Room {
 
   tick(now, dt) {
     this.tickCount++;
-    if (this.state === 'ended') {
-      if (now >= this.restartAt) this.reset();
+    if (this.state === 'lobby') {
+      // waiting for the host to start: nothing to simulate
+    } else if (this.state === 'ended') {
+      if (now >= this.restartAt) { if (this.lobby) this.backToLobby(); else this.reset(); }
     } else {
       for (const p of this.players.values()) {
         if (p.bot) { p.moveBudget = 1; botThink(this, p, now, dt); }
@@ -1013,14 +1178,14 @@ class Room {
         this.updatePlayer(p, now, dt);
       }
       this.updateNades(dt, now);
-      if (this.score.allies >= S.SCORE_LIMIT || this.score.axis >= S.SCORE_LIMIT || now >= this.endsAt) {
+      if (this.score.allies >= this.scoreLimit || this.score.axis >= this.scoreLimit || now >= this.endsAt) {
         this.state = 'ended';
-        this.restartAt = now + 12000;
+        this.restartAt = now + (this.lobby ? 10000 : 12000);
         const w = this.score.allies === this.score.axis ? 'draw' : this.score.allies > this.score.axis ? 'allies' : 'axis';
         this.events.push({ e: 'end', w });
       }
     }
-    if (this.tickCount % SEND_EVERY === 0) this.broadcast(now);
+    if (this.tickCount % (this.state === 'lobby' ? 30 : SEND_EVERY) === 0) this.broadcast(now);
     if (this.tickCount % 60 === 0) this.sendRoster();
   }
 
@@ -1033,7 +1198,7 @@ class Room {
     }
     const base = {
       t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, n.kind === 'rg' ? 1 : 0]), sc: [this.score.allies, this.score.axis],
-      tl: Math.max(0, this.endsAt - now), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
+      tl: Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
     };
     this.events = [];
     for (const p of this.players.values()) {
@@ -1064,8 +1229,10 @@ function basePlayer(name) {
   };
 }
 
-function createBot(team) {
-  const p = basePlayer(BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + ' [BOT]');
+function createBot(team, taken) {
+  const free = BOT_NAMES.filter((n) => !taken || !taken.has(n + ' [BOT]'));
+  const pool = free.length ? free : BOT_NAMES;
+  const p = basePlayer(pool[Math.floor(Math.random() * pool.length)] + ' [BOT]');
   const lo = BOT_LOADOUTS[Math.floor(Math.random() * BOT_LOADOUTS.length)];
   p.pendingLoadout = S.sanitizeLoadout({ ...lo, secondary: SECONDARIES[Math.floor(Math.random() * SECONDARIES.length)] });
   p.bot = { nextScan: 0, target: null, acquiredAt: 0, aimErr: 0, strafe: 1, strafeUntil: 0, nextPath: 0, lastPos: null, stuckCheck: 0 };
@@ -1166,17 +1333,35 @@ function connect(ws) {
     try { m = typeof raw === 'string' ? JSON.parse(raw) : JSON.parse(String(raw)); } catch (e) { return; }
     if (!m || typeof m.t !== 'string') return;
     const now = Date.now();
-    if (m.t === 'join' && !player) {
-      const name = String(m.name || 'Soldier').replace(/[^\w .\-']/g, '').trim().slice(0, 16) || 'Soldier';
-      const code = String(m.room || 'PUBLIC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'PUBLIC';
-      room = rooms.get(code);
-      if (!room) { room = new Room(code, S.clamp(m.bots | 0, 0, 6)); rooms.set(code, room); }
-      if (room.humans().length >= MAX_PLAYERS_PER_ROOM) { ws.send(JSON.stringify({ t: 'err', msg: 'Room is full' })); return; }
+    if (m.t === 'list') {
+      const list = [...rooms.values()].filter((r) => r.lobby && !r.priv).map((r) => r.info());
+      const quick = rooms.get('PUBLIC');
+      ws.send(JSON.stringify({ t: 'lobbies', list, quick: quick ? quick.humans().length : 0 }));
+      return;
+    }
+    if ((m.t === 'join' || m.t === 'create') && !player) {
+      const name = cleanText(m.name, 16, 'Soldier');
+      let code;
+      if (m.t === 'create') {
+        do { code = Array.from({ length: 5 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join(''); } while (rooms.has(code));
+        room = new Room(code, { lobby: true, name: m.lobbyName || name + "'s lobby", bots: m.bots, score: m.score, time: m.time, priv: m.priv });
+        rooms.set(code, room);
+      } else {
+        code = String(m.room || 'PUBLIC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'PUBLIC';
+        room = rooms.get(code);
+        if (!room) {
+          if (code !== 'PUBLIC' && code !== 'OFFLINE' && !m.quick) { ws.send(JSON.stringify({ t: 'err', msg: 'No lobby found with code ' + code + '.' })); room = null; return; }
+          room = new Room(code, { bots: m.bots == null ? 4 : m.bots });
+          rooms.set(code, room);
+        }
+      }
+      if (room.humans().length >= MAX_PLAYERS_PER_ROOM) { ws.send(JSON.stringify({ t: 'err', msg: 'That lobby is full.' })); room = null; return; }
       player = basePlayer(name);
       player.ws = ws;
       player.pendingLoadout = S.sanitizeLoadout(m.loadout);
       room.addPlayer(player);
-      ws.send(JSON.stringify({ t: 'welcome', id: player.id, code: room.code }));
+      ws.send(JSON.stringify({ t: 'welcome', id: player.id, code: room.code, lobby: room.lobby, state: room.state }));
+      room.sendLobby();
       room.sendRoster();
       return;
     }
@@ -1194,13 +1379,33 @@ function connect(ws) {
       case 'nade': room.throwNade(player, now); break;
       case 'rg': room.fireRifleNade(player, now); break;
       case 'loadout': player.pendingLoadout = S.sanitizeLoadout(m.loadout); break;
+      case 'ready':
+        if (room.state === 'lobby') { player.ready = !player.ready; room.sendLobby(); }
+        break;
+      case 'settings':
+        if (player.id === room.hostId && m.s && typeof m.s === 'object') { room.applySettings(m.s); room.balanceBots(); room.sendLobby(); }
+        break;
+      case 'start':
+        if (player.id === room.hostId && room.state === 'lobby') { room.reset(); room.sendLobby(); room.sendRoster(); }
+        break;
+      case 'kick': {
+        const target = room.players.get(m.id | 0);
+        if (player.id === room.hostId && target && !target.bot && target !== player) {
+          if (target.ws && target.ws.readyState === 1) target.ws.send(JSON.stringify({ t: 'kicked' }));
+          room.removePlayer(target.id);
+          if (target.ws && target.ws.close) try { target.ws.close(); } catch (e) { /* ignore */ }
+        }
+        break;
+      }
       case 'team': {
         const other = player.team === 'allies' ? 'axis' : 'allies';
-        if (room.teamCount(other) - (room.players.size - room.teamCount(other)) < 2 || room.humans().length < 2) {
+        const humansOther = [...room.players.values()].filter((q) => !q.bot && q.team === other).length;
+        if (room.state === 'lobby' ? humansOther < MAX_PLAYERS_PER_ROOM / 2 : (room.teamCount(other) - (room.players.size - room.teamCount(other)) < 2 || room.humans().length < 2)) {
           player.team = other;
           if (player.alive) { player.alive = false; player.respawnAt = now + RESPAWN_MS; player.killedBy = player.id; player.killedWith = 'Team change'; }
           room.balanceBots();
           room.sendRoster();
+          room.sendLobby();
         }
         break;
       }
@@ -1335,7 +1540,6 @@ function buildLoadout(el) {
 const menuLoadout = buildLoadout($('loadoutMenu'));
 const gameLoadout = buildLoadout($('loadoutGame'));
 $('name').value = loadSaved('fl_name', '');
-$('room').value = loadSaved('fl_room', '');
 let sens = loadSaved('fl_sens', 1);
 $('sens').value = sens; $('sensVal').textContent = (+sens).toFixed(2);
 $('sens').addEventListener('input', () => { sens = +$('sens').value; $('sensVal').textContent = sens.toFixed(2); save('fl_sens', sens); });
@@ -1417,42 +1621,102 @@ function localSocket() {
   return sock;
 }
 
-let offlineMode = false;
-function connect(offline) {
-  offlineMode = !!offline;
-  const name = $('name').value.trim() || 'Soldier';
-  const room = offline ? 'OFFLINE' : ($('room').value.trim() || 'PUBLIC');
-  save('fl_name', $('name').value.trim()); save('fl_room', $('room').value.trim()); save('fl_server', $('server').value.trim());
-  let bots = +$('bots').value;
-  if (offline) {
-    if (bots < 2) bots = 4;
-    ws = localSocket();
-  } else {
-    const url = serverUrl();
-    if (!url) { $('err').textContent = 'Enter your game server address for online play, or press PLAY OFFLINE VS BOTS.'; $('server').focus(); return; }
-    $('err').textContent = 'Connecting...';
-    try { ws = new WebSocket(url); } catch (e) { $('err').textContent = 'Could not connect: ' + e.message; return; }
-  }
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, room, bots, loadout }));
-  ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onMessage(m); };
-  ws.onclose = () => {
-    if (joined) showMenu(offlineMode ? '' : 'Disconnected from server.');
-    else $('err').textContent = 'Could not reach the game server.';
-    joined = false;
+let offlineMode = false, leaving = false, wsOpen = null, lobbyInfo = null, lastLobbyState = null;
+const playerName = () => { save('fl_name', $('name').value.trim()); return $('name').value.trim() || 'Soldier'; };
+
+function attach(sock) {
+  ws = sock;
+  sock.onmessage = (ev) => { if (ws !== sock) return; let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onMessage(m); };
+  sock.onclose = () => {
+    if (ws !== sock) return;
+    const wasJoined = joined;
+    ws = null; wsOpen = null; joined = false;
+    if (wasJoined || !$('lobbyScreen').classList.contains('hidden')) showMenu(leaving ? '' : 'Disconnected from server.');
+    else if (!leaving) showErr('Could not reach the game server.');
+    leaving = false;
   };
 }
+// Opens (or reuses) the connection to the online game server.
+function ensureOnline() {
+  if (ws && !offlineMode && wsOpen) return wsOpen;
+  if (ws) { leaving = true; ws.close(); }
+  const url = serverUrl();
+  if (!url) return Promise.reject(new Error('Enter your game server address above for online play, or choose OFFLINE VS BOTS.'));
+  save('fl_server', $('server').value.trim());
+  offlineMode = false;
+  let sock;
+  try { sock = new WebSocket(url); } catch (e) { return Promise.reject(new Error('Could not connect: ' + e.message)); }
+  attach(sock);
+  wsOpen = new Promise((res, rej) => {
+    sock.onopen = () => res();
+    sock.onerror = () => rej(new Error('Could not reach the game server at ' + url.replace(/^ws/, 'http').replace(/\/ws$/, '') + '.'));
+  });
+  wsOpen.catch(() => { if (ws === sock) { ws = null; wsOpen = null; } });
+  return wsOpen;
+}
+function online(action) {
+  initAudio();
+  showErr('Connecting...');
+  ensureOnline().then(() => { showErr(''); action(); }).catch((e) => showErr(e.message));
+}
+function playOffline() {
+  initAudio();
+  if (ws) { leaving = true; ws.close(); }
+  offlineMode = true;
+  const sock = localSocket();
+  attach(sock);
+  wsOpen = null;
+  sock.onopen = () => sock.send(JSON.stringify({ t: 'join', name: playerName(), room: 'OFFLINE', quick: true, bots: +$('offBots').value, loadout }));
+}
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+// Show an error message on whichever menu screen is visible.
+function showErr(msg) {
+  for (const id of ['lobbyScreen', 'createScreen', 'browseScreen', 'menu']) {
+    const el = $(id);
+    if (!el.classList.contains('hidden')) { el.querySelector('.err').textContent = msg; return; }
+  }
+  $('err').textContent = msg;
+}
+
+const SCREENS = ['menu', 'armory', 'createScreen', 'browseScreen', 'lobbyScreen'];
+function showScreen(id) {
+  for (const s2 of SCREENS) $(s2).classList.toggle('hidden', s2 !== id);
+  if (id) for (const s2 of ['hud', 'touch', 'pause', 'scoreboard', 'loadoutScreen']) $(s2).classList.add('hidden');
+  for (const s2 of SCREENS) { const e = $(s2).querySelector('.err'); if (e && s2 !== id) e.textContent = ''; }
+  if (browseTimer && id !== 'browseScreen') { clearInterval(browseTimer); browseTimer = null; }
+}
+
+function enterGame() {
+  showScreen(null);
+  $('hud').classList.remove('hidden');
+  if (isTouch) $('touch').classList.remove('hidden');
+  else if (!locked) { $('pause').classList.remove('hidden'); requestLock(); }
+}
+function enterLobby() {
+  if (document.pointerLockElement) document.exitPointerLock();
+  showScreen('lobbyScreen');
+  renderLobby();
+}
 
 function onMessage(m) {
   switch (m.t) {
     case 'welcome':
       myId = m.id; roomCode = m.code; joined = true; snaps = []; pending = []; you = null;
-      $('err').textContent = '';
-      $('menu').classList.add('hidden'); $('hud').classList.remove('hidden');
-      if (isTouch) $('touch').classList.remove('hidden');
-      else requestLock();
+      lastLobbyState = m.state;
+      if (m.lobby && m.state !== 'playing') enterLobby(); else enterGame();
       break;
-    case 'err': $('err').textContent = m.msg; break;
+    case 'lobby':
+      lobbyInfo = m;
+      if (!joined || !m.lobby) break;
+      if (m.state === 'playing' && lastLobbyState !== 'playing') enterGame();
+      else if (m.state === 'lobby' && lastLobbyState !== 'lobby') { enterLobby(); }
+      lastLobbyState = m.state;
+      renderLobby();
+      break;
+    case 'lobbies': renderLobbyList(m); break;
+    case 'kicked': leaving = true; showMenu('The host removed you from the lobby.'); break;
+    case 'err': showErr(m.msg); break;
     case 'r':
       roster.clear();
       for (const p of m.l) roster.set(p.i, p);
@@ -1476,7 +1740,7 @@ function onState(m) {
   snaps.push({ t: now, p: map });
   while (snaps.length > 30) snaps.shift();
   nadeState = m.n;
-  match.sc = m.sc; match.tl = m.tl; match.rs = m.rs;
+  match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb;
   if (match.st === 'ended' && m.st === 'playing') { match.winner = null; killfeed.length = 0; }
   match.st = m.st;
   you = m.you;
@@ -2087,11 +2351,12 @@ let moveStick = null;
 const lookPointers = new Map();
 const STICK_R = 60;
 
-const inGame = () => joined && $('loadoutScreen').classList.contains('hidden') && $('pause').classList.contains('hidden');
+const inGame = () => joined && $('loadoutScreen').classList.contains('hidden') && $('pause').classList.contains('hidden') && $('lobbyScreen').classList.contains('hidden');
 function requestLock() { if (!isTouch && canvas.requestPointerLock) { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ } } }
+document.addEventListener('pointerlockerror', () => { if (joined && inGame()) $('pause').classList.remove('hidden'); });
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
-  if (!locked && joined && !isTouch && $('loadoutScreen').classList.contains('hidden')) $('pause').classList.remove('hidden');
+  if (!locked && joined && !isTouch && $('loadoutScreen').classList.contains('hidden') && $('lobbyScreen').classList.contains('hidden')) $('pause').classList.remove('hidden');
   if (locked) $('pause').classList.add('hidden');
   mouseDown = mouseRight = false;
 });
@@ -2188,7 +2453,7 @@ function toggleScores(force) {
 function renderScores() {
   const teams = { allies: [], axis: [] };
   for (const p of roster.values()) teams[p.t].push(p);
-  let html = `<h2>Room ${esc(roomCode)} &mdash; Team Deathmatch (first to ${S.SCORE_LIMIT})</h2><div class="sb">`;
+  let html = `<h2>Room ${esc(roomCode)} &mdash; Team Deathmatch (first to ${match.sl || S.SCORE_LIMIT})</h2><div class="sb">`;
   for (const t of ['allies', 'axis']) {
     teams[t].sort((a, b) => b.k - a.k || a.d - b.d);
     html += `<div class="${t}"><h3>${t.toUpperCase()} ${match.sc[t === 'allies' ? 0 : 1]}</h3><table><tr><th>Soldier</th><th>K</th><th>D</th></tr>`;
@@ -2200,23 +2465,37 @@ function renderScores() {
 function toggleLoadout(force) {
   const el = $('loadoutScreen');
   const show = force === undefined ? el.classList.contains('hidden') : force;
+  const inLobby = !$('lobbyScreen').classList.contains('hidden');
   el.classList.toggle('hidden', !show);
-  if (show) { gameLoadout.render(); if (document.pointerLockElement) document.exitPointerLock(); }
-  else if (joined && !isTouch) requestLock();
+  $('switchTeam').classList.toggle('hidden', inLobby);
+  $('leave').classList.toggle('hidden', inLobby);
+  $('loadoutTag').textContent = inLobby ? 'Your loadout for the next match.' : 'Changes apply on your next respawn.';
+  if (show) { $('pause').classList.add('hidden'); gameLoadout.render(); if (document.pointerLockElement) document.exitPointerLock(); }
+  else if (joined && !isTouch && !inLobby) requestLock();
   fireBtns.clear(); mouseDown = false;
 }
-$('loadoutSave').addEventListener('click', () => { send({ t: 'loadout', loadout }); toggleLoadout(false); centerMsg = { text: 'Loadout saved\nApplies on respawn', t: performance.now() }; });
+$('loadoutSave').addEventListener('click', () => {
+  const inLobby = !$('lobbyScreen').classList.contains('hidden');
+  send({ t: 'loadout', loadout }); toggleLoadout(false);
+  if (!inLobby) centerMsg = { text: 'Loadout saved\nApplies on respawn', t: performance.now() };
+});
 $('switchTeam').addEventListener('click', () => { send({ t: 'team' }); toggleLoadout(false); });
-$('leave').addEventListener('click', () => { if (ws) ws.close(); });
+$('leave').addEventListener('click', leaveMatch);
+function leaveMatch() { leaving = true; if (ws) ws.close(); else showMenu(''); }
 
+function loadoutSummary() {
+  const p = S.WEAPONS[loadout.primary], sc = S.WEAPONS[loadout.secondary];
+  const a = loadout.atts.map((x) => S.ATTACHMENTS[x].name).join(' + ');
+  $('loadoutSummary').innerHTML = `Loadout: <b>${esc(p.name)}</b>${a ? ' (' + esc(a) + ')' : ''} &middot; <b>${esc(sc.name)}</b>`;
+}
 function showMenu(err) {
   joined = false;
+  lobbyInfo = null; lastLobbyState = null;
   if (document.pointerLockElement) document.exitPointerLock();
   for (const id of [...soldiers.keys()]) removeSoldier(id);
-  $('menu').classList.remove('hidden');
-  for (const id of ['hud', 'touch', 'loadoutScreen', 'scoreboard', 'pause']) $(id).classList.add('hidden');
+  showScreen('menu');
   $('err').textContent = err || '';
-  menuLoadout.render();
+  loadoutSummary();
 }
 function goFullscreen(toggle) {
   const d = document;
@@ -2225,17 +2504,122 @@ function goFullscreen(toggle) {
   const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : null;
   if (p && p.then) p.then(() => { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); }).catch(() => {});
 }
-function deploy(offline) {
-  initAudio();
-  if (isTouch && !matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) goFullscreen(false);
-  connect(offline);
-}
-$('deploy').addEventListener('click', () => deploy(false));
-$('offline').addEventListener('click', () => deploy(true));
+function phoneFullscreen() { if (isTouch && !matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) goFullscreen(false); }
+
+// ---- main menu
+$('btnQuick').addEventListener('click', () => { phoneFullscreen(); online(() => send({ t: 'join', name: playerName(), room: 'PUBLIC', quick: true, bots: 4, loadout })); });
+$('btnCreate').addEventListener('click', () => { showScreen('createScreen'); if (!$('lobbyName').value) $('lobbyName').placeholder = playerName() + "'s lobby"; });
+$('btnBrowse').addEventListener('click', () => { showScreen('browseScreen'); refreshLobbies(); browseTimer = setInterval(refreshLobbies, 4000); });
+$('offline').addEventListener('click', () => { phoneFullscreen(); playOffline(); });
+$('btnArmory').addEventListener('click', () => { showScreen('armory'); menuLoadout.render(); });
+$('armoryBack').addEventListener('click', () => showMenu(''));
 $('server').value = loadSaved('fl_server', '');
 if (servedOverHttp) $('server').placeholder = 'Leave empty to use this site (' + location.host + ')';
 if (!window.Sim) $('offline').classList.add('hidden');
-$('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('deploy').click(); });
+$('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnQuick').click(); });
+
+// ---- create lobby
+const BOT_OPTS = [0, 1, 2, 3, 4, 5, 6, 7], SCORE_OPTS = [25, 50, 75, 100, 150], TIME_OPTS = [5, 10, 15, 20, 30];
+function fillSelect(el, opts, val, label) { el.innerHTML = opts.map((o) => `<option value="${o}"${o === val ? ' selected' : ''}>${label(o)}</option>`).join(''); }
+const botLabel = (o) => o === 0 ? 'No bots' : o + ' per team';
+fillSelect($('cBots'), BOT_OPTS, 4, botLabel);
+fillSelect($('cScore'), SCORE_OPTS, 50, (o) => o + ' kills');
+fillSelect($('cTime'), TIME_OPTS, 10, (o) => o + ' min');
+$('createBack').addEventListener('click', () => showMenu(''));
+$('createGo').addEventListener('click', () => {
+  phoneFullscreen();
+  online(() => send({ t: 'create', name: playerName(), lobbyName: $('lobbyName').value.trim() || $('lobbyName').placeholder,
+    bots: +$('cBots').value, score: +$('cScore').value, time: +$('cTime').value, priv: $('cPriv').checked, loadout }));
+});
+
+// ---- lobby browser
+let browseTimer = null;
+function refreshLobbies() { online(() => send({ t: 'list' })); }
+function joinLobby(code) {
+  code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!code) { showErr('Type a lobby code first.'); return; }
+  phoneFullscreen();
+  online(() => send({ t: 'join', name: playerName(), room: code, loadout }));
+}
+function renderLobbyList(m) {
+  const el = $('lobbyList');
+  const rows = m.list.map((l) => `<div class="lobby-row"><div class="info"><div class="nm">${esc(l.name)}${l.state === 'lobby' ? '<span class="badge">Waiting</span>' : '<span class="badge live">In match</span>'}</div>
+    <div class="meta">Host ${esc(l.host)} &middot; ${l.players}/${l.max} players &middot; ${l.bots ? l.bots + ' bots/team' : 'no bots'} &middot; first to ${l.score} &middot; ${l.time} min &middot; code ${esc(l.code)}</div></div>
+    <button data-code="${esc(l.code)}"${l.players >= l.max ? ' disabled' : ''}>JOIN</button></div>`);
+  rows.push(`<div class="lobby-row"><div class="info"><div class="nm">Quick Play</div><div class="meta">Public drop-in match &middot; ${m.quick} playing</div></div><button data-quick="1">PLAY</button></div>`);
+  el.innerHTML = (m.list.length ? '' : '<p class="tag">No open lobbies right now. Create one from the main menu!</p>') + rows.join('');
+  for (const b of el.querySelectorAll('button[data-code]')) b.addEventListener('click', () => joinLobby(b.dataset.code));
+  for (const b of el.querySelectorAll('button[data-quick]')) b.addEventListener('click', () => $('btnQuick').click());
+}
+$('joinGo').addEventListener('click', () => joinLobby($('joinCode').value));
+$('joinCode').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinLobby($('joinCode').value); });
+$('browseRefresh').addEventListener('click', refreshLobbies);
+$('browseBack').addEventListener('click', () => showMenu(''));
+
+// ---- lobby room
+function renderLobby() {
+  const L = lobbyInfo;
+  if (!L || $('lobbyScreen').classList.contains('hidden')) return;
+  const isHost = L.host === myId;
+  const me = L.players.find((p) => p.i === myId);
+  const humans = L.players.filter((p) => !p.b);
+  const ready = humans.filter((p) => p.r).length;
+  $('lbName').textContent = L.name;
+  $('lbCode').textContent = L.code;
+  $('lbPriv').innerHTML = L.priv ? '<span class="badge">Private</span>' : '<span class="badge">Public</span>';
+  $('lbStatus').textContent = L.state === 'lobby'
+    ? `${ready} of ${humans.length} ready · ${isHost ? 'You are the host: press START MATCH when everyone is set.' : 'Waiting for the host to start the match...'}`
+    : L.state === 'playing' ? 'Match in progress...' : 'Match over: returning to the lobby...';
+  let html = '';
+  for (const t of ['allies', 'axis']) {
+    const list = L.players.filter((p) => p.t === t).sort((a, b) => a.b - b.b);
+    html += `<div class="${t}"><h3>${t.toUpperCase()} <span class="tagx">${((n) => n + (n === 1 ? ' player' : ' players'))(list.filter((p) => !p.b).length)}</span></h3><table>`;
+    for (const p of list) {
+      html += `<tr class="${p.i === myId ? 'me' : ''}"><td>${esc(p.n.replace(' [BOT]', ''))}${p.i === L.host ? '<span class="tagx">&#9733; host</span>' : ''}${p.b ? '<span class="tagx">bot</span>' : ''}</td>`
+        + `<td class="rd">${p.b ? '' : p.r ? '&#10003; READY' : ''}</td>`
+        + `<td class="kick">${isHost && !p.b && p.i !== myId ? `<button data-kick="${p.i}" title="Remove from lobby">&#10005;</button>` : ''}</td></tr>`;
+    }
+    if (!list.length) html += '<tr><td class="tagx">Empty</td></tr>';
+    html += '</table></div>';
+  }
+  $('lbTeams').innerHTML = html;
+  for (const b of $('lbTeams').querySelectorAll('button[data-kick]')) b.addEventListener('click', () => send({ t: 'kick', id: +b.dataset.kick }));
+  // settings
+  const st = L.settings;
+  const box = $('lbSettings');
+  if (isHost) {
+    if (!box.dataset.host || document.activeElement === null || !box.contains(document.activeElement)) {
+      box.dataset.host = '1';
+      box.innerHTML = `<div class="lo-label">Match settings (host)</div><div class="row">
+        <label>Bots per team<select id="hBots"></select></label><label>Score limit<select id="hScore"></select></label><label>Time limit<select id="hTime"></select></label></div>
+        <label class="check"><input type="checkbox" id="hPriv"${L.priv ? ' checked' : ''}> Private lobby</label>`;
+      fillSelect($('hBots'), BOT_OPTS, st.bots, botLabel);
+      fillSelect($('hScore'), SCORE_OPTS, st.score, (o) => o + ' kills');
+      fillSelect($('hTime'), TIME_OPTS, st.time, (o) => o + ' min');
+      const push = () => send({ t: 'settings', s: { bots: +$('hBots').value, score: +$('hScore').value, time: +$('hTime').value, priv: $('hPriv').checked } });
+      for (const id of ['hBots', 'hScore', 'hTime', 'hPriv']) $(id).addEventListener('change', push);
+    }
+  } else {
+    box.dataset.host = '';
+    box.innerHTML = `<div class="lo-label">Match settings</div><div class="ro">${st.bots ? st.bots + ' bots per team' : 'No bots'} &middot; first to ${st.score} kills &middot; ${st.time} minute limit</div>`;
+  }
+  const inLobby = L.state === 'lobby';
+  $('lbReady').classList.toggle('hidden', !inLobby);
+  $('lbReady').textContent = me && me.r ? 'NOT READY' : 'READY';
+  $('lbReady').classList.toggle('alt', !!(me && me.r));
+  $('lbStart').classList.toggle('hidden', !(isHost && inLobby));
+}
+$('lbReady').addEventListener('click', () => send({ t: 'ready' }));
+$('lbStart').addEventListener('click', () => { initAudio(); send({ t: 'start' }); });
+$('lbTeam').addEventListener('click', () => send({ t: 'team' }));
+$('lbLoadout').addEventListener('click', () => toggleLoadout(true));
+$('lbLeave').addEventListener('click', leaveMatch);
+$('lbCopy').addEventListener('click', () => {
+  const code = lobbyInfo ? lobbyInfo.code : '';
+  const done = () => { $('lbCopy').textContent = 'Copied!'; setTimeout(() => { $('lbCopy').textContent = 'Copy'; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(done, () => {}); else done();
+});
+loadoutSummary();
 
 let deferredPrompt = null;
 addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; $('install').classList.remove('hidden'); });
@@ -2293,7 +2677,7 @@ function frame(now) {
   soundsThisFrame = 0;
   $('rotate').classList.toggle('hidden', !(joined && isTouch && H > W));
 
-  if (!joined) { renderAttract(now); return; }
+  if (!joined || !$('lobbyScreen').classList.contains('hidden')) { renderAttract(now); return; }
   const players = interpPlayers(now);
   const st = myStats();
   const alive = !!(you && you.alive && match.st === 'playing');
@@ -2626,7 +3010,7 @@ function updateHud(now) {
   if (match.st === 'ended') {
     const w = match.winner;
     c = (w === 'draw' ? 'DRAW' : (w === you.team ? 'VICTORY' : 'DEFEAT') + '\n' + (w || '').toUpperCase() + ' WIN') +
-      `\n<small>${match.sc[0]} - ${match.sc[1]} · next match in ${Math.ceil(match.rs / 1000)}s</small>`;
+      `\n<small>${match.sc[0]} - ${match.sc[1]} · ${match.lb ? 'back to the lobby' : 'next match'} in ${Math.ceil(match.rs / 1000)}s</small>`;
   } else if (!you.alive) {
     const by = you.kb === myId ? 'You' : nameOf(you.kb);
     c = (you.kw === 'Team change' ? 'SWITCHING TEAMS' : 'KILLED BY ' + esc(by).toUpperCase() + `\n<small>${esc(you.kw || '')}</small>`) +
