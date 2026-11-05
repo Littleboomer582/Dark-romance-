@@ -1,5 +1,6 @@
 /* Frontline 1945 — first-person browser / Android client */
 import * as THREE from './vendor/three.module.min.js';
+import * as Guns from './guns.js';
 
 const S = window.Shared;
 const $ = (id) => document.getElementById(id);
@@ -132,12 +133,56 @@ function tone(freq, dur, vol, type) {
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
 }
-const SHOT_SND = { 'SMG': [2600, 0.14], 'Assault Rifle': [2100, 0.2], 'Rifle': [1700, 0.3], 'Bolt-Action': [1400, 0.45], 'Shotgun': [1100, 0.4], 'Machine Gun': [2000, 0.18], 'Pistol': [3000, 0.12] };
-function volAt(x, y) { return Math.max(0, 1 - Math.hypot(x - pred.x, y - pred.y) / 1800); }
+// Layered gunshot: supersonic crack + muzzle blast + low thump + echo tail, muffled with distance.
+const SHOT_SND = { // crack HP, body LP, body decay, thump Hz, tail decay, gain
+  'SMG': [2400, 2300, 0.11, 100, 0.55, 0.5], 'Assault Rifle': [3000, 1900, 0.15, 85, 0.75, 0.62], 'Rifle': [3400, 1600, 0.2, 75, 0.95, 0.72],
+  'Bolt-Action': [3800, 1400, 0.26, 62, 1.3, 0.85], 'Shotgun': [1800, 1100, 0.3, 58, 1.1, 0.85], 'Machine Gun': [3000, 1800, 0.13, 80, 0.65, 0.62],
+  'Pistol': [2800, 2600, 0.09, 115, 0.45, 0.42],
+};
+function volAt(x, y) { return Math.max(0, 1 - Math.hypot(x - pred.x, y - pred.y) / 2400); }
+function nz(dest, t, type, f, q, peak, attack, decay) {
+  const src = actx.createBufferSource(); src.buffer = noiseBuf;
+  const fl = actx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q || 0.7;
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(peak, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
+  src.connect(fl); fl.connect(g); g.connect(dest);
+  src.start(t, Math.random() * 0.8); src.stop(t + attack + decay + 0.05);
+}
 function playShot(wid, x, y, sup) {
-  const w = S.WEAPONS[wid]; if (!w) return;
-  const v = volAt(x, y); const [f, d] = SHOT_SND[w.cls] || [2000, 0.2];
-  if (sup) noise(900, 0.08, v * 0.25); else noise(f, d, v * 0.55);
+  const w = S.WEAPONS[wid]; if (!w || !actx || soundsThisFrame > 6) return;
+  const near = volAt(x, y); if (near <= 0.01) return;
+  soundsThisFrame++;
+  const [hp, lp, bd, th, tail, gain] = SHOT_SND[w.cls] || SHOT_SND.SMG;
+  const t = actx.currentTime;
+  const out = actx.createGain(); out.gain.value = gain * (0.15 + 0.85 * near * near);
+  const muffle = actx.createBiquadFilter(); muffle.type = 'lowpass'; muffle.frequency.value = 500 + 15000 * near * near;
+  out.connect(muffle); muffle.connect(actx.destination);
+  if (sup) { nz(out, t, 'lowpass', 1300, 0.7, 0.45, 0.002, 0.09); nz(out, t, 'highpass', 3500, 0.7, 0.2, 0.001, 0.02); return; }
+  nz(out, t, 'highpass', hp, 0.8, 0.9 * near, 0.001, 0.035);   // crack
+  nz(out, t, 'lowpass', lp, 0.9, 1.0, 0.002, bd);               // blast
+  const o = actx.createOscillator(); o.type = 'sine'; // thump
+  o.frequency.setValueAtTime(th * 2.2, t); o.frequency.exponentialRampToValueAtTime(th * 0.5, t + 0.14);
+  const og = actx.createGain(); og.gain.setValueAtTime(0.9, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+  o.connect(og); og.connect(out); o.start(t); o.stop(t + 0.22);
+  nz(out, t + 0.035, 'lowpass', 650, 0.5, 0.22, 0.02, tail);    // echo tail
+}
+// Mechanical sounds for your own weapon.
+function mech(kind) {
+  if (!actx) return;
+  const t = actx.currentTime, d = actx.destination;
+  const click = (at, v, f) => nz(d, t + at, 'highpass', f || 3200, 1.2, v, 0.001, 0.025);
+  const slide = (at, v, f, dur) => nz(d, t + at, 'bandpass', f || 1400, 1.5, v, 0.01, dur || 0.1);
+  switch (kind) {
+    case 'bolt': click(0, 0.25); slide(0.06, 0.16, 1600, 0.12); click(0.2, 0.22, 2600); slide(0.25, 0.14, 1300, 0.1); click(0.36, 0.3); break;
+    case 'pump': slide(0, 0.2, 900, 0.07); click(0.06, 0.25, 2000); slide(0.18, 0.2, 1000, 0.06); click(0.22, 0.3, 2200); break;
+    case 'magout': click(0, 0.22); slide(0.03, 0.12, 1200, 0.12); break;
+    case 'magin': slide(0, 0.1, 1100, 0.05); click(0.05, 0.35, 1800); nz(d, t + 0.05, 'lowpass', 500, 0.7, 0.25, 0.002, 0.07); break;
+    case 'rack': click(0, 0.25); slide(0.02, 0.15, 1500, 0.08); click(0.12, 0.35, 2400); break;
+    case 'click': click(0, 0.2, 4000); break;
+    case 'ping': for (const [f, v] of [[2650, 0.12], [4150, 0.06], [2690, 0.08]]) { const o = actx.createOscillator(); o.frequency.value = f; const g = actx.createGain(); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7); o.connect(g); g.connect(d); o.start(t); o.stop(t + 0.75); } break;
+    case 'shell': for (let i = 0; i < 3; i++) { const o = actx.createOscillator(); o.frequency.value = 3200 + Math.random() * 3200; const g = actx.createGain(); const at = t + i * (0.05 + Math.random() * 0.07); g.gain.setValueAtTime(0.035 / (i + 1), at); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.06); o.connect(g); g.connect(d); o.start(at); o.stop(at + 0.08); } break;
+    case 'hull': nz(d, t, 'lowpass', 700, 0.7, 0.12, 0.002, 0.06); break;
+  }
 }
 
 // ================================================================ network
@@ -298,6 +343,7 @@ function onState(m) {
   while (snaps.length > 30) snaps.shift();
   nadeState = m.n;
   match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb;
+  lastStateAt = now;
   if (match.st === 'ended' && m.st === 'playing') { match.winner = null; killfeed.length = 0; }
   match.st = m.st;
   you = m.you;
@@ -341,13 +387,15 @@ function handleEvent(e, now) {
           pitch = Math.min(1.45, pitch + k);
           yaw += (Math.random() - 0.5) * k * 0.6;
           recoilDebt += k * 0.55;
-          vmKick = Math.min(1.5, vmKick + 0.6 + k * 6);
-          vmFlash = now;
+          vmShot(st, now);
           shake = Math.max(shake, k * 30);
         }
       } else {
         start = new THREE.Vector3(ox + Math.cos(e.a) * 26, oh - 9, oy + Math.sin(e.a) * 26);
-        if (e.p === 0 && !e.s) { const sm = soldiers.get(e.i); if (sm) sm.flash.userData.t = now; }
+        if (e.p === 0 && !e.s) {
+          const sm = soldiers.get(e.i); if (sm) sm.flash.userData.t = now;
+          if (now - (muzzleLight.userData.t || 0) > 60 && Math.hypot(e.x - pred.x, e.y - pred.y) < 900) { muzzleLight.position.set(start.x, start.y, start.z); muzzleLight.intensity = 2500; muzzleLight.userData.t = now; }
+        }
       }
       if (e.p === 0) playShot(e.w, e.x, e.y, e.u);
       if (Math.random() < (isMe ? 0.5 : 0.8)) spawnTracer(start, end, e.u);
@@ -381,7 +429,7 @@ function handleEvent(e, now) {
       noise(4000, 0.06, 0.15);
       break;
     case 'n': tone(300, 0.05, 0.05, 'sine'); break;
-    case 'rg': noise(700, 0.35, volAt(pred.x, pred.y) * 0.5); if (e.i === myId) vmKick = 1.5; break;
+    case 'rg': noise(700, 0.35, volAt(pred.x, pred.y) * 0.5); if (e.i === myId) { vmImpulse(0.08); if (vm && vm.gun.parts.rifleNade) vm.gun.parts.rifleNade.visible = false; } break;
     case 'end': match.winner = e.w; break;
   }
 }
@@ -403,8 +451,17 @@ scene.add(camera);
 
 const vmScene = new THREE.Scene();
 const vmCamera = new THREE.PerspectiveCamera(55, 1, 0.5, 300);
-vmScene.add(new THREE.HemisphereLight(0xe8e4d8, 0x4a4030, 1.6));
-const vmSun = new THREE.DirectionalLight(0xfff0d8, 1.6); vmSun.position.set(0.4, 1, 0.3); vmScene.add(vmSun);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+const envMap = Guns.makeEnvironment(renderer);
+vmScene.environment = envMap;
+scene.environment = envMap;
+scene.environmentIntensity = 0.6;
+vmScene.add(new THREE.HemisphereLight(0xe8e4d8, 0x4a4030, 0.9));
+const vmSun = new THREE.DirectionalLight(0xfff0d8, 2.2); vmSun.position.set(0.6, 1, 0.5); vmScene.add(vmSun);
+const vmFill = new THREE.DirectionalLight(0xc8d4ff, 0.5); vmFill.position.set(-1, 0.3, -0.4); vmScene.add(vmFill);
+const vmMuzzleLight = new THREE.PointLight(0xffb060, 0, 60, 1.5); vmScene.add(vmMuzzleLight);
+const muzzleLight = new THREE.PointLight(0xffb060, 0, 420, 1.6);
 
 scene.add(new THREE.HemisphereLight(0xcfd6db, 0x5a5034, 1.25));
 const sun = new THREE.DirectionalLight(0xfff0d0, 2.0);
@@ -416,7 +473,7 @@ if (renderer.shadowMap.enabled) {
   const sc = sun.shadow.camera; sc.left = -1600; sc.right = 1600; sc.top = 1300; sc.bottom = -1300; sc.near = 100; sc.far = 3500;
   sun.shadow.bias = -0.0008;
 }
-scene.add(sun); scene.add(sun.target);
+scene.add(sun); scene.add(sun.target); scene.add(muzzleLight);
 
 let W = 0, H = 0, odpr = 1;
 function resize() {
@@ -567,171 +624,13 @@ function wallMat(tex, w, h) { const t = tex.clone(); t.needsUpdate = true; t.rep
   }
 })();
 
-// ============================================================ gun models
-const GUNSPEC = {
-  thompson: { rec: 13, recH: 3.6, bar: 11, barR: 0.9, fins: true, stock: 'wood', stockL: 13, mag: 'stick', magL: 9, magX: 6, fore: 'wood', foreL: 6 },
-  mp40: { rec: 12, recH: 3, bar: 10, barR: 0.7, stock: 'wire', stockL: 12, mag: 'stick', magL: 12, magX: 5 },
-  ppsh41: { rec: 11, recH: 3.4, bar: 9, barR: 1.4, shroud: true, stock: 'wood', stockL: 15, mag: 'stick', magL: 9, magX: 5, curve: 0.25 },
-  type100: { rec: 12, recH: 3, bar: 10, barR: 1.0, shroud: true, stock: 'wood', stockL: 14, mag: 'side', magL: 9, magX: 5 },
-  stg44: { rec: 15, recH: 3.6, bar: 10, barR: 0.7, stock: 'wood', stockL: 12, mag: 'stick', magL: 11, magX: 6, curve: 0.3, fore: 'metal', foreL: 6 },
-  bar: { rec: 16, recH: 3.6, bar: 16, barR: 0.8, stock: 'wood', stockL: 14, mag: 'box', magL: 6, magX: 7, fore: 'wood', foreL: 8 },
-  garand: { rec: 12, recH: 3, bar: 17, barR: 0.7, stock: 'full', stockL: 14, mag: 'none', fore: 'wood', foreL: 14 },
-  gewehr43: { rec: 12, recH: 3, bar: 16, barR: 0.7, stock: 'full', stockL: 14, mag: 'box', magL: 5, magX: 6, fore: 'wood', foreL: 12 },
-  svt40: { rec: 12, recH: 3, bar: 17, barR: 0.7, stock: 'full', stockL: 14, mag: 'box', magL: 5, magX: 6, fore: 'wood', foreL: 11 },
-  m1carbine: { rec: 10, recH: 2.8, bar: 12, barR: 0.6, stock: 'full', stockL: 13, mag: 'box', magL: 6, magX: 5, fore: 'wood', foreL: 9 },
-  kar98k: { rec: 12, recH: 2.8, bar: 20, barR: 0.6, stock: 'full', stockL: 15, mag: 'none', bolt: true, fore: 'wood', foreL: 17 },
-  springfield: { rec: 12, recH: 2.8, bar: 20, barR: 0.6, stock: 'full', stockL: 15, mag: 'none', bolt: true, fore: 'wood', foreL: 17 },
-  mosin: { rec: 12, recH: 2.8, bar: 23, barR: 0.6, stock: 'full', stockL: 15, mag: 'box', magL: 3, magX: 5, bolt: true, fore: 'wood', foreL: 20 },
-  arisaka: { rec: 12, recH: 2.8, bar: 21, barR: 0.6, stock: 'full', stockL: 15, mag: 'none', bolt: true, fore: 'wood', foreL: 18 },
-  trenchgun: { rec: 10, recH: 3.4, bar: 18, barR: 0.8, stock: 'wood', stockL: 14, mag: 'none', tube: true, pump: true, shroud: true },
-  doublebarrel: { rec: 8, recH: 3, bar: 18, barR: 0.8, double: true, stock: 'wood', stockL: 14, mag: 'none', fore: 'wood', foreL: 8 },
-  mg42: { rec: 18, recH: 4, bar: 12, barR: 1.6, shroud: true, stock: 'metal', stockL: 12, mag: 'belt', magX: 4 },
-  dp28: { rec: 14, recH: 3.4, bar: 16, barR: 1.0, fins: true, stock: 'wood', stockL: 13, mag: 'pan', magX: 6 },
-  type99: { rec: 14, recH: 3.6, bar: 14, barR: 0.9, fins: true, stock: 'wood', stockL: 13, mag: 'top', magL: 8, magX: 6 },
-  revolver: { pistol: true, revolver: true },
-};
+// ============================================================ small mesh helpers
 function box(w, h, d, mat, x, y, z) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); return m; }
-function cylX(r, len, mat, x0, y, z, r2) { // cylinder along +X starting at x0
-  const g = new THREE.CylinderGeometry(r2 == null ? r : r2, r, len, 10); g.rotateZ(-Math.PI / 2);
-  const m = new THREE.Mesh(g, mat); m.position.set(x0 + len / 2, y, z); return m;
-}
 function limb(a, b, t, mat) {
   const len = a.distanceTo(b);
   const m = new THREE.Mesh(new THREE.BoxGeometry(t, t, len), mat);
   m.position.copy(a).lerp(b, 0.5); m.lookAt(b);
   return m;
-}
-
-function makeGun(id, atts) {
-  atts = atts || [];
-  const w = S.WEAPONS[id] || S.WEAPONS.thompson;
-  const sp = GUNSPEC[id] || (w.secondary ? { pistol: true } : GUNSPEC.thompson);
-  const g = new THREE.Group();
-  const has = (a) => atts.includes(a);
-  let muzzleX, barY, top, sightH, leftHand;
-  if (sp.pistol) {
-    top = 2.8; barY = 1.8;
-    if (sp.revolver) {
-      g.add(box(4, 2.6, 1.6, M.metal, 1.5, 1.6, 0));
-      g.add(cylX(1.5, 3, M.metal, 0.5, 1.4, 0));
-      g.add(cylX(0.5, 6.5, M.metal, 3.5, 2.2, 0));
-      muzzleX = 10;
-    } else {
-      g.add(box(9, 2.2, 1.5, M.metal, 2.8, 1.8, 0));
-      g.add(box(7, 1.2, 1.3, M.dark, 2.2, 0.5, 0));
-      muzzleX = 7.3;
-    }
-    const grip = box(2.2, 5.5, 1.5, M.wood, -0.2, -1.8, 0); grip.rotation.z = 0.25; g.add(grip);
-    if (has('extmag')) g.add(box(1.4, 2.5, 1.1, M.dark, -0.9, -5.4, 0));
-    if (has('dualmag')) { g.add(box(1.4, 4, 1.1, M.dark, -1.5, -3.5, -1.4)); }
-    g.add(box(0.4, 0.8, 0.4, M.dark, muzzleX - 0.8, top - 0.4, 0));
-    sightH = top;
-    leftHand = new THREE.Vector3(-0.2, -2.5, -1.4);
-  } else {
-    const recH = sp.recH, rec = sp.rec;
-    top = 1.5 + recH / 2;
-    barY = 1.5 + recH * 0.15;
-    const x0 = -2 + rec;
-    g.add(box(rec, recH, 2.4, M.metal, -2 + rec / 2, 1.5, 0));
-    const grip = box(2, 5, 1.6, sp.stock === 'full' ? M.wood : M.wood2, 0, -1.6, 0); grip.rotation.z = 0.3; g.add(grip);
-    // barrel
-    if (sp.double) { g.add(cylX(sp.barR, sp.bar, M.metal, x0, barY, 0.8)); g.add(cylX(sp.barR, sp.bar, M.metal, x0, barY, -0.8)); }
-    else g.add(cylX(sp.shroud ? sp.barR : sp.barR, sp.bar, sp.shroud ? M.dark : M.metal, x0, barY, 0));
-    if (sp.shroud) g.add(cylX(0.45, sp.bar + 1.2, M.metal, x0, barY, 0));
-    if (sp.fins) for (let i = 0; i < 6; i++) g.add(cylX(sp.barR + 0.5, 0.4, M.dark, x0 + 1 + i * 1.2, barY, 0));
-    // stock
-    if (sp.stock === 'wood' || sp.stock === 'full') {
-      const st = box(sp.stockL, 4, 2.1, M.wood, -2 - sp.stockL / 2, 0.4, 0); st.rotation.z = 0.08; g.add(st);
-      g.add(box(0.8, 4.6, 2.3, M.dark, -2 - sp.stockL, 0.0, 0));
-    } else if (sp.stock === 'wire') {
-      g.add(box(sp.stockL, 0.5, 0.5, M.metal, -2 - sp.stockL / 2, 2.2, 0.8));
-      g.add(box(sp.stockL, 0.5, 0.5, M.metal, -2 - sp.stockL / 2, 0.2, 0.8));
-      g.add(box(0.6, 3.5, 2.2, M.metal, -2 - sp.stockL, 1.2, 0.4));
-    } else if (sp.stock === 'metal') {
-      const st = box(sp.stockL, 3.6, 2, M.dark, -2 - sp.stockL / 2, 0.8, 0); st.rotation.z = 0.06; g.add(st);
-    }
-    // fore-end
-    const foreL = sp.foreL || 0;
-    if (sp.fore === 'wood' || sp.stock === 'full') g.add(box(foreL || sp.bar * 0.6, 2.2, 2.6, M.wood, x0 + (foreL || sp.bar * 0.6) / 2 - 0.5, barY - 1.2, 0));
-    else if (sp.fore === 'metal') g.add(box(foreL, 2, 2.4, M.dark, x0 + foreL / 2, barY - 1, 0));
-    if (sp.bolt) { g.add(cylX(0.35, 2.5, M.metal, rec * 0.5 - 2, 2.2, 1.4)); g.children[g.children.length - 1].rotation.y = -1.2; g.add(box(1, 1, 1, M.metal, rec * 0.5 - 1.6, 2.2, 2.6)); }
-    if (sp.tube) g.add(cylX(0.6, sp.bar * 0.85, M.metal, x0, barY - 1.4, 0));
-    if (sp.pump) g.add(cylX(1.2, 6, M.wood, x0 + 2, barY - 1.4, 0));
-    // magazine
-    const magBottom = 1.5 - recH / 2;
-    const addMag = (zoff) => {
-      let L = sp.magL || 6;
-      if (has('extmag')) L *= 1.5;
-      if (sp.mag === 'stick' || sp.mag === 'box') {
-        const m = box(sp.mag === 'box' ? 4 : 2.2, L, 1.6, M.dark, sp.magX, magBottom - L / 2, zoff);
-        if (sp.curve) { m.geometry.translate(0, -L / 2, 0); m.position.y = magBottom; m.rotation.z = sp.curve; }
-        g.add(m);
-      } else if (sp.mag === 'side') {
-        g.add(box(2.2, 1.6, L, M.dark, sp.magX, 1.5, -1.2 - L / 2));
-      } else if (sp.mag === 'top') {
-        const m = box(2.2, L, 1.6, M.dark, sp.magX, top + L / 2, 1.0 + zoff); m.rotation.z = -0.3; g.add(m);
-      }
-    };
-    if (has('drum')) {
-      const d = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.6, 2.8, 16), M.dark); d.rotation.x = Math.PI / 2;
-      if (sp.mag === 'belt') d.position.set(sp.magX, 0, -4); else d.position.set(sp.magX, magBottom - 4.4, 0);
-      g.add(d);
-    } else if (sp.mag === 'pan') {
-      const d = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.5, 1.2, 18), M.dark); d.position.set(sp.magX, top + 1, 0); g.add(d);
-      if (has('extmag')) { const d2 = d.clone(); d2.position.y += 1.2; g.add(d2); }
-    } else if (sp.mag === 'belt') {
-      g.add(box(5, has('extmag') ? 7 : 5, 4, M.nade, sp.magX, -1, -4.5));
-      for (let i = 0; i < 5; i++) g.add(box(0.6, 0.4, 1.2, M.brass, sp.magX - 2 + i, 2, -2.4));
-    } else if (sp.mag !== 'none') {
-      addMag(0);
-      if (has('dualmag')) { addMag(1.8); g.add(box(sp.mag === 'box' ? 4.2 : 2.4, 1.2, 3.6, M.tape, sp.magX, magBottom - 2.5, 0.9)); }
-    }
-    muzzleX = x0 + sp.bar;
-    // iron sights
-    g.add(box(0.4, 1.6, 0.4, M.dark, muzzleX - 1, barY + sp.barR + 0.8, 0));
-    g.add(box(0.6, 1, 1.6, M.dark, -0.5, top + 0.5, 0));
-    sightH = Math.max(top + 0.9, barY + sp.barR + 1.5);
-    leftHand = new THREE.Vector3(x0 + Math.min(sp.bar * 0.35, 7), barY - 2.2, -0.6);
-    // ---- attachments
-    if (has('grip')) { g.add(box(1.8, 5, 1.8, M.wood2, x0 + Math.min(sp.bar * 0.3, 6), barY - 4.2, 0)); leftHand.set(x0 + Math.min(sp.bar * 0.3, 6), barY - 5.5, -0.6); }
-    if (has('bipod')) {
-      for (const s of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.45, 10, 0.45), M.metal);
-        leg.geometry.translate(0, -5, 0);
-        leg.position.set(x0 + sp.bar * 0.75, barY - 0.6, 0); leg.rotation.set(s * 0.35, 0, 0.45); g.add(leg);
-      }
-    }
-    if (has('bayonet')) {
-      g.add(box(2.5, 1.4, 1.2, M.dark, muzzleX - 2.5, barY - 1.4, 0));
-      g.add(box(13, 1.1, 0.3, M.blade, muzzleX + 4.5, barY - 1.4, 0));
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.55, 2.4, 4), M.blade); tip.rotation.z = -Math.PI / 2; tip.position.set(muzzleX + 12.1, barY - 1.4, 0); g.add(tip);
-    }
-    if (has('sling')) {
-      const a = new THREE.Vector3(-2 - (sp.stockL || 8) * 0.8, -2.2, 1.3), b = new THREE.Vector3(x0 + sp.bar * 0.5, barY - 1.5, 1.3), mid = new THREE.Vector3((a.x + b.x) / 2, -6, 1.6);
-      g.add(limb(a, mid, 0.35, M.strap)); g.add(limb(mid, b, 0.35, M.strap));
-    }
-    if (has('scope')) {
-      const sy = top + 2.6, sx = -1;
-      g.add(cylX(1.1, 12, M.dark, sx, sy, 0));
-      g.add(cylX(1.6, 2.5, M.dark, sx + 12, sy, 0, 1.1));
-      g.add(cylX(1.1, 2, M.dark, sx - 2, sy, 0, 1.5));
-      g.add(box(1.2, 2, 1, M.metal, sx + 2.5, top + 1, 0)); g.add(box(1.2, 2, 1, M.metal, sx + 9, top + 1, 0));
-      const lens = new THREE.Mesh(new THREE.CircleGeometry(1.4, 12), M.glass); lens.rotation.y = Math.PI / 2; lens.position.set(sx + 14.55, sy, 0); g.add(lens);
-      sightH = sy;
-    } else if (has('aperture')) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.28, 6, 12), M.dark); ring.rotation.y = Math.PI / 2; ring.position.set(-1, top + 1.3, 0); g.add(ring);
-      sightH = Math.max(sightH, top + 1.3);
-    }
-  }
-  // muzzle devices
-  if (has('suppressor')) { g.add(cylX(sp.pistol ? 1.0 : 1.3, sp.pistol ? 7 : 10, M.dark, muzzleX, barY, 0)); muzzleX += sp.pistol ? 7 : 10; }
-  if (has('flashhider')) { g.add(cylX(0.65, 3, M.dark, muzzleX, barY, 0, 1.15)); muzzleX += 3; }
-  if (has('riflenade')) {
-    g.add(cylX(1.25, 3.5, M.metal, muzzleX, barY, 0)); muzzleX += 3.5;
-    g.add(cylX(1.4, 4.5, M.nade, muzzleX, barY, 0)); g.add(cylX(0.5, 3, M.nade, muzzleX + 4.5, barY, 0, 1.4));
-  }
-  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return { group: g, muzzle: new THREE.Vector3(muzzleX, barY, 0), sightH, leftHand, scope: has('scope') };
 }
 
 // muzzle flash sprite
@@ -747,39 +646,167 @@ function makeFlash(size) {
 }
 
 // ============================================================ viewmodel
-let vm = null; // {key, holder, gun, flash}
-let adsT = 0, vmKick = 0, vmSwap = 0, vmFlash = 0, vmMelee = 0, bobPhase = 0, movingNow = false, crouchOn = false, crouchT = 0;
-const VM_HIP = new THREE.Vector3(6.5, -7.2, -15.5);
-function sleeveMat(team) { return new THREE.MeshLambertMaterial({ color: team === 'axis' ? 0x5c6366 : 0x6b7140 }); }
+let vm = null;
+let adsT = 0, vmSwap = 0, vmFlash = 0, vmMelee = 0, bobPhase = 0, movingNow = false, crouchOn = false, crouchT = 0;
+let lastStateAt = 0, reloadP = 0;
+const rec = { z: 0, rx: 0, ry: 0, rz: 0, vz: 0, vrx: 0, vry: 0, vrz: 0 };
+const sway = { x: 0, y: 0, lastYaw: 0, lastPitch: 0 };
+const VM_HIP = new THREE.Vector3(7, -7.6, -18.5), VM_HIP_PISTOL = new THREE.Vector3(5.4, -5.8, -14);
+const skinMat = new THREE.MeshStandardMaterial({ color: 0xc0906a, roughness: 0.62 });
+const Z_AXIS = new THREE.Vector3(0, 0, 1);
+const armGeo = new THREE.CylinderGeometry(1, 0.82, 1, 14); armGeo.rotateX(Math.PI / 2); armGeo.translate(0, 0, 0.5);
+function sleeveMat(team) { return new THREE.MeshStandardMaterial({ color: team === 'axis' ? 0x5a6162 : 0x666b3c, roughness: 0.95 }); }
+function setArm(m, a, b, r) { const d = tmpA.subVectors(b, a); const len = d.length(); m.position.copy(a); m.quaternion.setFromUnitVectors(Z_AXIS, d.normalize()); m.scale.set(r, r, len); }
+const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3();
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+// a finger segment between two points (gun-local, relative to the hand)
+function seg(a, b, r) {
+  const d = new THREE.Vector3().subVectors(b, a); const len = d.length();
+  const f = new THREE.Mesh(new THREE.CapsuleGeometry(r || 0.36, Math.max(0.1, len - (r || 0.36) * 2), 4, 8), skinMat);
+  f.position.copy(a).lerp(b, 0.5); f.quaternion.setFromUnitVectors(Y_AXIS, d.normalize());
+  return f;
+}
+const P3 = (x, y, z) => new THREE.Vector3(x, y, z);
+function makeRightHand() { // grips a pistol grip / stock wrist: palm on the right, fingers wrap round to the left side
+  const h = new THREE.Group();
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), skinMat); palm.scale.set(1.5, 2.1, 0.8); palm.position.set(-0.7, -0.2, 1.35); h.add(palm);
+  for (let i = 0; i < 3; i++) { // middle, ring, little finger
+    const y = -0.1 - i * 0.95, s2 = i === 2 ? 0.85 : 1;
+    h.add(seg(P3(0.2, y, 1.25), P3(1.25, y, 0.6), 0.37));
+    h.add(seg(P3(1.25, y, 0.6), P3(1.1, y - 0.1, -0.9 * s2), 0.35));
+    h.add(seg(P3(1.1, y - 0.1, -0.9 * s2), P3(0.2, y - 0.2, -1.3 * s2), 0.32));
+  }
+  h.add(seg(P3(0.3, 1.0, 1.2), P3(1.6, 1.35, 0.5), 0.36)); // index finger on the trigger
+  h.add(seg(P3(1.6, 1.35, 0.5), P3(2.1, 1.0, 0.0), 0.33));
+  h.add(seg(P3(-1.2, 0.9, 1.2), P3(-0.6, 1.5, -0.6), 0.42)); // thumb wraps over to the left side
+  h.add(seg(P3(-0.6, 1.5, -0.6), P3(0.5, 1.0, -1.35), 0.38));
+  h.rotation.z = -0.12;
+  return h;
+}
+function makeLeftHand() { // cradles the fore-end from below: thumb up the left side, fingers up the right
+  const h = new THREE.Group();
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), skinMat); palm.scale.set(2.1, 0.8, 1.5); palm.position.set(0, -0.35, 0); h.add(palm);
+  for (let i = 0; i < 4; i++) { const x = -1.3 + i * 0.85; h.add(seg(P3(x, -0.2, 1.2), P3(x + 0.2, 1.1, 1.65), 0.36)); h.add(seg(P3(x + 0.2, 1.1, 1.65), P3(x + 0.3, 2.0, 1.25), 0.32)); }
+  h.add(seg(P3(-0.6, -0.3, -1.2), P3(0.6, 0.6, -1.7), 0.42)); // thumb
+  h.add(seg(P3(0.6, 0.6, -1.7), P3(1.6, 1.5, -1.5), 0.38));
+  return h;
+}
 function buildViewmodel(id, atts, team) {
   const key = id + ':' + atts.join(',') + ':' + team;
   if (vm && vm.key === key) return;
   if (vm) vmScene.remove(vm.holder);
-  const gun = makeGun(id, atts);
+  const gun = Guns.makeGun(id, atts);
   const holder = new THREE.Group();
   gun.group.rotation.y = Math.PI / 2;
   holder.add(gun.group);
   const sleeve = sleeveMat(team);
-  // right hand on the grip, left hand forward
-  gun.group.add(box(3, 3.2, 2.6, M.skin, 0, -1.8, 0.4));
-  gun.group.add(limb(new THREE.Vector3(-1, -3, 1.2), new THREE.Vector3(-13, -10, 8), 3.4, sleeve));
-  const lh = gun.leftHand;
-  gun.group.add(box(3, 2.6, 2.8, M.skin, lh.x, lh.y, lh.z));
-  gun.group.add(limb(new THREE.Vector3(lh.x - 1, lh.y - 1, lh.z - 0.5), new THREE.Vector3(lh.x - 10, lh.y - 11, -9), 3.4, sleeve));
-  const flash = makeFlash(9);
-  flash.position.copy(gun.muzzle).add(new THREE.Vector3(2.5, 0, 0));
-  gun.group.add(flash);
+  gun.group.position.z = gun.rightHand.x; // put the grip where your hand naturally is
+  const rHand = makeRightHand(); rHand.position.copy(gun.rightHand); gun.group.add(rHand);
+  const lHand = makeLeftHand(); lHand.position.copy(gun.leftHand); gun.group.add(lHand);
+  if (gun.foregrip) lHand.rotation.x = -1.2;
+  const rArm = new THREE.Mesh(armGeo, sleeve), lArm = new THREE.Mesh(armGeo, sleeve);
+  gun.group.add(rArm, lArm);
+  const rElbow = gun.rightHand.clone().add(new THREE.Vector3(-15, -8, 9));
+  const lElbow = gun.pistol ? gun.leftHand.clone().add(new THREE.Vector3(-12, -8, -9)) : gun.leftHand.clone().add(new THREE.Vector3(-11, -12, -8));
+  const tex = Guns.fxTextures();
+  const mkFlash = (size) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.flashStar, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); sp.scale.set(size, size, 1); sp.visible = false; return sp; };
+  const flash = mkFlash(gun.pistol ? 5 : 8), flash2 = mkFlash(gun.pistol ? 3 : 5);
+  flash.position.copy(gun.muzzle).add(new THREE.Vector3(2.2, 0, 0)); flash2.position.copy(gun.muzzle).add(new THREE.Vector3(4.5, 0, 0));
+  gun.group.add(flash, flash2);
   vmScene.add(holder);
-  vm = { key, holder, gun, flash };
+  vm = { key, holder, gun, flash, flash2, rHand, lHand, rArm, lArm, rElbow, lElbow, rHandHome: gun.rightHand.clone() };
 }
+// world-space position of your muzzle (for tracers, smoke and the flash light)
 function vmMuzzleWorld() {
-  // approximate world-space muzzle position for tracers
+  if (vm && vm.holder.visible) {
+    vm.holder.updateMatrixWorld(true);
+    const p = vm.gun.group.localToWorld(tmpC.copy(vm.gun.muzzle)); // viewmodel camera space
+    const k = Math.tan(camera.fov * Math.PI / 360) / Math.tan(vmCamera.fov * Math.PI / 360); // match on-screen position
+    p.x *= k; p.y *= k;
+    return camera.localToWorld(p.clone());
+  }
   const eyeH = S.eyeHeight(crouchOn);
   const f = new THREE.Vector3(Math.cos(yaw) * Math.cos(pitch), Math.sin(pitch), Math.sin(yaw) * Math.cos(pitch));
-  const right = new THREE.Vector3(-Math.sin(yaw), 0, Math.cos(yaw));
-  const p = new THREE.Vector3(pred.x, eyeH, pred.y).addScaledVector(f, 28);
-  p.addScaledVector(right, 5 * (1 - adsT)).y -= 4 * (1 - adsT) + 1.5;
-  return p;
+  return new THREE.Vector3(pred.x, eyeH - 2, pred.y).addScaledVector(f, 30);
+}
+function vmImpulse(k) {
+  const a = 1 - adsT * 0.45;
+  rec.vz += (45 + k * 900) * a;
+  rec.vrx += (2.5 + k * 70) * a;
+  rec.vry += (Math.random() - 0.5) * (1 + k * 30) * a;
+  rec.vrz += (Math.random() - 0.5) * (2 + k * 40) * a;
+}
+function vmShot(st, now) {
+  vmImpulse(st.recoil);
+  vmFlash = now;
+  if (vm) Guns.onShot(vm.gun, now);
+  if (!st.noFlash) {
+    const p = vmMuzzleWorld();
+    muzzleLight.position.copy(p); muzzleLight.intensity = 4000; muzzleLight.userData.t = now;
+    vmMuzzleLight.intensity = 450; vmMuzzleLight.userData.t = now;
+  }
+  if (Math.random() < (st.auto ? 0.35 : 0.9)) puffSmoke(vmMuzzleWorld(), st.cls === 'Shotgun' || st.cls === 'Bolt-Action' ? 3 : 1);
+}
+const springStep = (x, v, dt) => { const a = -300 * x - 26 * v; v += a * dt; return [x + v * dt, v]; };
+function updateRecoil(dt) {
+  for (let i = 0; i < 2; i++) {
+    const h = dt / 2;
+    [rec.z, rec.vz] = springStep(rec.z, rec.vz, h);
+    [rec.rx, rec.vrx] = springStep(rec.rx, rec.vrx, h);
+    [rec.ry, rec.vry] = springStep(rec.ry, rec.vry, h);
+    [rec.rz, rec.vrz] = springStep(rec.rz, rec.vrz, h);
+  }
+}
+// ---- ejected casings (viewmodel space)
+const casings = [];
+let casingTpl = null, shellTpl = null;
+function spawnCasings(n, kind) {
+  if (!vm || !vm.gun.ejectPort) return;
+  if (!casingTpl) { casingTpl = Guns.casingMesh(false); shellTpl = Guns.casingMesh(true); }
+  vm.holder.updateMatrixWorld(true);
+  const shell = !!vm.gun.shell;
+  for (let i = 0; i < n; i++) {
+    const m = (shell ? shellTpl : casingTpl).clone();
+    m.position.copy(vm.gun.group.localToWorld(tmpB.copy(vm.gun.ejectPort)));
+    m.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+    let vx = 20 + Math.random() * 12, vy = 14 + Math.random() * 9, vz = 3 + Math.random() * 4;
+    if (kind === 'down') { vx = (Math.random() - 0.5) * 4; vy = -6 - Math.random() * 6; vz = 1; m.position.y -= i * 0.3; }
+    if (kind === 'back') { vx = (Math.random() - 0.5) * 6; vy = 10 + Math.random() * 4; vz = 14; }
+    vmScene.add(m);
+    casings.push({ m, vx, vy, vz, sx: (Math.random() - 0.5) * 30, sy: (Math.random() - 0.5) * 30, t: performance.now() });
+    setTimeout(() => mech(shell ? 'hull' : 'shell'), 380 + Math.random() * 260 + i * 60);
+  }
+}
+function updateCasings(now, dt) {
+  for (let i = casings.length - 1; i >= 0; i--) {
+    const c = casings[i];
+    if (now - c.t > 900) { vmScene.remove(c.m); casings.splice(i, 1); continue; }
+    c.vy -= 85 * dt;
+    c.m.position.x += c.vx * dt; c.m.position.y += c.vy * dt; c.m.position.z += c.vz * dt;
+    c.m.rotation.x += c.sx * dt; c.m.rotation.y += c.sy * dt;
+  }
+}
+// ---- muzzle smoke (world space)
+const smokes = [];
+function puffSmoke(pos, n) {
+  const tex = Guns.fxTextures().smoke;
+  for (let i = 0; i < n && smokes.length < 40; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.32 }));
+    sp.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 3));
+    sp.scale.setScalar(5);
+    scene.add(sp);
+    smokes.push({ sp, t: performance.now(), life: 1400 + Math.random() * 800, vx: Math.cos(yaw) * 8 + (Math.random() - 0.5) * 6, vy: 6 + Math.random() * 6, vz: Math.sin(yaw) * 8 + (Math.random() - 0.5) * 6 });
+  }
+}
+function updateSmoke(now, dt) {
+  for (let i = smokes.length - 1; i >= 0; i--) {
+    const s2 = smokes[i]; const k = (now - s2.t) / s2.life;
+    if (k >= 1) { scene.remove(s2.sp); s2.sp.material.dispose(); smokes.splice(i, 1); continue; }
+    s2.sp.position.x += s2.vx * dt; s2.sp.position.y += s2.vy * dt; s2.sp.position.z += s2.vz * dt;
+    s2.vx *= 0.97; s2.vz *= 0.97;
+    s2.sp.scale.setScalar(5 + k * 26);
+    s2.sp.material.opacity = 0.32 * (1 - k);
+  }
 }
 
 // ============================================================== soldiers
@@ -824,6 +851,7 @@ function makeSoldier(id, team) {
   const holder = new THREE.Group(); holder.position.set(6, 52, 3); upper.add(holder);
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
   const flash = makeFlash(14);
+  root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   scene.add(root);
   return { root, legL, legR, upper, holder, uniMat: uni, gunKey: '', gun: null, flash, team, tag: null, tagName: '', walk: 0, lastX: 0, lastY: 0, deadAt: 0, flashAt: 0 };
 }
@@ -831,7 +859,7 @@ function setSoldierGun(s, key) {
   if (s.gunKey === key) return;
   if (s.gun) s.holder.remove(s.gun.group);
   const [id, a] = key.split(':');
-  const gun = makeGun(id, a ? a.split(',') : []);
+  const gun = Guns.mergeGun(Guns.makeGun(id, a ? a.split(',') : []));
   s.holder.add(gun.group);
   // arms
   const sleeve = s.uniMat;
@@ -1402,29 +1430,76 @@ function frame(now) {
   // --- viewmodel
   const g = you && you.g ? you.g[you.slot] : null;
   if (g && you) buildViewmodel(g[0], g[1], you.team);
+  // reload progress (0..1), smoothed between server updates
+  if (you && you.rl > 0) reloadP = Math.min(0.999, 1 - Math.max(0, you.rl - (now - lastStateAt) / st.reload));
+  else reloadP = 0;
+  updateRecoil(dt);
+  updateCasings(now, dt);
+  updateSmoke(now, dt);
+  if (muzzleLight.intensity > 0 && now - muzzleLight.userData.t > 55) muzzleLight.intensity = 0;
+  if (vmMuzzleLight.intensity > 0 && now - vmMuzzleLight.userData.t > 55) vmMuzzleLight.intensity = 0;
   const showVm = !!(vm && you && you.alive && !scoped);
   if (vm) {
+    const G = vm.gun;
     vm.holder.visible = showVm;
-    vmKick *= Math.pow(0.0005, dt);
     vmSwap = Math.max(0, vmSwap - dt * 3);
-    const target = new THREE.Vector3(0, -vm.gun.sightH, -11).lerp(VM_HIP, 1 - adsT);
+    // parts + sounds
+    const evs = Guns.animateGun(G, { now, rate: st.rate, reload: reloadP, ammo: you ? you.ammo : 1 });
+    for (const ev of evs) {
+      if (ev === 'eject') spawnCasings(1);
+      else if (ev === 'eject6') spawnCasings(6, 'down');
+      else if (ev === 'eject2') spawnCasings(2, 'back');
+      else mech(ev);
+    }
+    if (G.parts.rifleNade) G.parts.rifleNade.visible = !!(you && you.rg > 0);
+    // hands: left hand follows the magazine / pump, right hand works the bolt
+    Guns.leftHandTarget(G, reloadP, tmpB);
+    if (G.parts.pump) tmpB.x += G.parts.pump.position.x - 8.5;
+    vm.lHand.position.lerp(tmpB, Math.min(1, dt * 16));
+    let rTarget = vm.rHandHome;
+    const bolt = G.parts.bolt;
+    if (bolt && (Math.abs(bolt.rotation.x) > 0.05 || bolt.position.x < -0.2)) {
+      bolt.updateMatrixWorld(true);
+      rTarget = G.group.worldToLocal(bolt.localToWorld(tmpC.set(-2.4, -0.8, 3.6))).add(tmpA.set(0, 0, 0.6));
+    }
+    vm.rHand.position.lerp(rTarget, Math.min(1, dt * 18));
+    setArm(vm.rArm, tmpA.copy(vm.rHand.position).add(tmpC.set(-1.2, -1.4, 1.5)), vm.rElbow, 1.9);
+    setArm(vm.lArm, tmpB.copy(vm.lHand.position).add(tmpC.set(-1.0, -0.9, -0.2)), vm.lElbow, 1.8);
+    // position: hip <-> aim down sights
+    const hip = G.pistol ? VM_HIP_PISTOL : VM_HIP;
+    const target = tmpA.set(-(G.sightZ || 0), -G.sightH, G.pistol ? -14 : -15.5).lerp(hip, 1 - adsT);
     const bobA = movingNow ? (1 - adsT * 0.85) : 0;
     target.x += Math.sin(bobPhase) * 0.6 * bobA;
-    target.y += Math.abs(Math.cos(bobPhase)) * 0.5 * bobA - crouchT * 0.3;
-    target.z += vmKick * 1.8;
+    target.y += Math.abs(Math.cos(bobPhase)) * 0.5 * bobA - crouchT * 0.3 + Math.sin(now / 700) * 0.12 * (1 - adsT);
     target.y -= vmSwap * 14;
-    let rx = vmKick * 0.06, ry = 0, rz = 0;
-    if (sprint && movingNow) { target.x -= 2; target.y -= 2.5; ry = 0.7; rz = 0.25; rx -= 0.2; }
-    const rl = you ? you.rl : 0;
-    if (rl > 0) { const dip = Math.sin(Math.min(1, (1 - rl)) * Math.PI); target.y -= dip * 5; rz += dip * 0.7; rx -= dip * 0.3; }
+    // sway against your look direction
+    let dyaw = yaw - sway.lastYaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
+    const dp = pitch - sway.lastPitch;
+    sway.lastYaw = yaw; sway.lastPitch = pitch;
+    const sk = 1 - adsT * 0.7;
+    sway.x += (S.clamp(-dyaw * 3, -0.12, 0.12) * sk - sway.x) * Math.min(1, dt * 9);
+    sway.y += (S.clamp(dp * 3, -0.1, 0.1) * sk - sway.y) * Math.min(1, dt * 9);
+    target.x += sway.x * 5; target.y += sway.y * 4;
+    let rx = 0, ry = 0, rz = 0;
+    if (sprint && movingNow) { target.x -= 2; target.y -= 2.5; ry = 0.75; rz = 0.3; rx -= 0.25; }
+    if (reloadP > 0) {
+      const dip = Math.sin(Math.min(1, reloadP) * Math.PI);
+      const boltGun = G.action === 'bolt' || G.action === 'garand' || G.action === 'pump';
+      target.y -= dip * 1.5; target.x -= dip * 1.5;
+      rz += dip * (boltGun ? -0.3 : G.action === 'revolver' ? 0.45 : 0.22); rx += dip * (G.action === 'break' ? 0.2 : 0.06); ry += dip * 0.12;
+    }
     const mk = now - vmMelee;
-    if (mk < 300) { const j = Math.sin(mk / 300 * Math.PI); target.z -= j * 9; target.x -= j * 3; rz -= j * 0.4; }
-    vm.holder.position.lerp(target, Math.min(1, dt * 18));
-    vm.holder.rotation.x += (rx - vm.holder.rotation.x) * Math.min(1, dt * 18);
-    vm.holder.rotation.y += (ry - vm.holder.rotation.y) * Math.min(1, dt * 12);
-    vm.holder.rotation.z += (rz - vm.holder.rotation.z) * Math.min(1, dt * 12);
-    vm.flash.visible = now - vmFlash < 45 && !st.noFlash;
-    if (vm.flash.visible) vm.flash.material.rotation = Math.random() * TAU;
+    if (mk < 320) { const j = Math.sin(mk / 320 * Math.PI); target.z -= j * 9; target.x -= j * 3; rz -= j * 0.4; }
+    vm.holder.position.lerp(target, Math.min(1, dt * 20));
+    vm.holder.position.z += rec.z * 0.05;
+    vm.holder.rotation.set(rx + rec.rx * 0.04 + sway.y, ry + rec.ry * 0.03 + sway.x, rz + rec.rz * 0.03);
+    // muzzle flash
+    const fl = now - vmFlash < 42 && !st.noFlash;
+    vm.flash.visible = vm.flash2.visible = fl;
+    if (fl) {
+      vm.flash.material.rotation = Math.random() * TAU; vm.flash2.material.rotation = Math.random() * TAU;
+      const s2 = 0.8 + Math.random() * 0.5; vm.flash.scale.setScalar((G.pistol ? 5 : 8) * s2); vm.flash2.scale.setScalar((G.pistol ? 3 : 5) * s2);
+    }
   }
 
   renderer.clear();

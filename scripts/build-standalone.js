@@ -24,11 +24,26 @@ function threeAsObject() {
   return `const THREE = (() => {\n${src}\nreturn {${props.join(',')}};\n})();\n`;
 }
 
+// guns.js is an ES module too: wrap it and expose its exports as a Guns object.
+function gunsAsObject() {
+  let src = read('guns.js');
+  const imp = /^import \* as THREE from '\.\/vendor\/three\.module\.min\.js';\s*$/m;
+  if (!imp.test(src)) throw new Error('THREE import not found in guns.js');
+  src = src.replace(imp, '');
+  const names = [];
+  src = src.replace(/^export (function|const|let) (\w+)/gm, (m, kind, name) => { names.push(name); return kind + ' ' + name; });
+  if (/^export /m.test(src)) throw new Error('Unhandled export in guns.js');
+  return `const Guns = (() => {\n${src}\nreturn { ${names.join(', ')} };\n})();\n`;
+}
+
 let html = read('index.html');
 let game = read('game.js');
 const importLine = /^import \* as THREE from '\.\/vendor\/three\.module\.min\.js';\s*$/m;
 if (!importLine.test(game)) throw new Error('THREE import line not found in game.js');
 game = game.replace(importLine, '');
+const gunsImport = /^import \* as Guns from '\.\/guns\.js';\s*$/m;
+if (!gunsImport.test(game)) throw new Error('Guns import line not found in game.js');
+game = game.replace(gunsImport, '');
 
 const icon = 'data:image/png;base64,' + fs.readFileSync(path.join(pub, 'icons/icon-192.png')).toString('base64');
 const replaceOnce = (needle, value) => {
@@ -41,7 +56,7 @@ replaceOnce('<link rel="icon" href="icons/icon-192.png">', `<link rel="icon" hre
 replaceOnce('<link rel="apple-touch-icon" href="icons/icon-192.png">', `<link rel="apple-touch-icon" href="${icon}">`);
 replaceOnce('<script src="shared.js"></script>', `<script>\n${safe(read('shared.js'))}\n</script>`);
 replaceOnce('<script src="sim.js"></script>', `<script>\n${safe(read('sim.js'))}\n</script>`);
-replaceOnce('<script type="module" src="game.js"></script>', `<script type="module">\n${safe(threeAsObject())}\n${safe(game)}\n</script>`);
+replaceOnce('<script type="module" src="game.js"></script>', `<script type="module">\n${safe(threeAsObject())}\n${safe(gunsAsObject())}\n${safe(game)}\n</script>`);
 
 const out = path.join(root, 'frontline-1945.html');
 fs.writeFileSync(out, html);

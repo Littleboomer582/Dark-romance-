@@ -27,6 +27,14 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - Magazine: **Extended Mag**, **Drum Mag** or **Dual Mags** (faster reloads)
   - Ammo: **FMJ Rounds** (shoot through crates and sandbags) or **Rapid Fire**
   - Also: **Bayonet** (one-hit lunge) and **Sling** (faster movement and faster aiming)
+- **Detailed weapons**:
+  - Each gun is modeled from shaped parts with real details: carved wood stocks, tapered barrels, sight hoods, barrel bands, trigger guards, bolt handles, and perforated barrel jackets.
+  - Materials: blued and parkerized steel, varnished wood, bakelite and brass, lit by a reflection map.
+- **Working mechanisms**:
+  - Bolt-actions are cycled by your hand after each shot, and pistol slides recoil.
+  - The Trench Gun pumps, the revolver cylinder swings out, and the double-barrel breaks open.
+  - Magazines drop out and are replaced, while casings and shells eject.
+- **Gun feel**: spring recoil, weapon sway, muzzle smoke, a muzzle flash that lights the area, and layered gunshot audio plus mechanical sounds (bolt, magazine, Garand clip "ping").
 - **Real 3D ballistics**: headshots (x1.5 damage), crouching behind sandbags and crates, shooting over low cover, recoil, and grenades that arc and bounce.
 - Frag grenades, knife and bayonet melee, aiming down sights, sprinting, crouching, health that regenerates, a rotating minimap with radar, damage-direction indicators, a death cam, a killfeed and a scoreboard.
 - The server decides all hits (authoritative server). Your own movement is predicted on your device so it feels responsive.
@@ -108,6 +116,7 @@ Look sensitivity is set on the main menu.
 - `public/sim.js`: game simulation: rooms, hit detection, grenades, bot AI (A* pathfinding). Runs on the server and in the browser for offline play
 - `scripts/build-standalone.js`: builds the single-file `frontline-1945.html`
 - `public/shared.js`: weapon and attachment stats, map, and collision code shared by the server and the client
+- `public/guns.js`: procedural weapon models, materials and part animations
 - `public/game.js`: first-person Three.js client: world, soldiers, procedural gun and attachment models, viewmodel, input, prediction, audio, loadout builder
 - `public/vendor/three.module.min.js`: Three.js r170, bundled locally so the Android app needs no CDN
 - `public/index.html`, `style.css`: menus and HUD
