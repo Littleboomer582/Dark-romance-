@@ -1,6 +1,6 @@
 # Frontline 1945
 
-An online **team-vs-team** (Allies vs Axis) top-down WWII shooter. It runs in any **computer browser** and installs on **Android as an app** (Progressive Web App: home-screen icon, fullscreen, landscape).
+An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter built with Three.js. It runs in any **computer browser** and installs on **Android as an app** (Progressive Web App: home-screen icon, fullscreen, landscape).
 
 ## Features
 
@@ -15,16 +15,15 @@ An online **team-vs-team** (Allies vs Axis) top-down WWII shooter. It runs in an
   - Shotgun: Trench Gun, Double-Barreled
   - Machine gun: MG42, DP-28, Type 99
   - Pistol: M1911, P38, TT-33, Nambu, .357
-- **Attachments** (up to 2 per gun, depending on the weapon):
-  - Telescopic Scope: zooms out and is very accurate
-  - Aperture Sight
-  - Foregrip
-  - Extended Mag
-  - Dual Mags: faster reloads
-  - Suppressor: your shots don't show you on the enemy radar
-  - Bayonet: melee lunge that kills in one hit
-  - Bipod: very accurate when you aim while standing still
-- Frag grenades, knife and bayonet melee, aiming down sights, sprinting, health that regenerates, a minimap with radar, a killfeed and a scoreboard.
+- **14 attachments**, up to **3 per primary** (one per slot) plus **1 for your sidearm**. They are all modelled on the 3D gun:
+  - Optic: **Telescopic Scope** (4x zoom with a scope overlay) or **Aperture Sight**
+  - Muzzle: **Suppressor** (stays off the enemy radar), **Flash Hider** (less recoil, no flash) or **Rifle Grenade** (3 explosive launched grenades)
+  - Underbarrel: **Foregrip** or **Bipod** (deadly accurate while still or crouched)
+  - Magazine: **Extended Mag**, **Drum Mag** or **Dual Mags** (faster reloads)
+  - Ammo: **FMJ Rounds** (shoot through crates and sandbags) or **Rapid Fire**
+  - Also: **Bayonet** (one-hit lunge) and **Sling** (faster movement and faster aiming)
+- **Real 3D ballistics**: headshots (x1.5 damage), crouching behind sandbags and crates, shooting over low cover, recoil, and grenades that arc and bounce.
+- Frag grenades, knife and bayonet melee, aiming down sights, sprinting, crouching, health that regenerates, a rotating minimap with radar, damage-direction indicators, a death cam, a killfeed and a scoreboard.
 - The server decides all hits (authoritative server). Your own movement is predicted on your device so it feels responsive.
 
 ## Run it
@@ -61,20 +60,24 @@ If the app is hosted somewhere other than the game server, point it at the serve
 
 | | Computer | Android |
 |---|---|---|
-| Move | WASD / arrows | Left thumb (virtual stick) |
-| Aim | Mouse | Right thumb stick (light aim assist) |
-| Fire | Left click | Push the aim stick to its edge, or hold **FIRE** |
-| Aim down sights | Right click | **AIM** (toggle) |
-| Sprint | Shift | **RUN** |
+| Move | WASD | Left thumb stick (push it all the way up to sprint) |
+| Look | Mouse (click to lock the pointer) | Drag on the right side of the screen (light aim assist) |
+| Fire | Left click | **FIRE** buttons (drag on them to aim while firing) |
+| Aim down sights | Right click | **AIM** |
+| Sprint / Crouch | Shift / C or Ctrl | stick / **↧** |
 | Reload / Swap | R / Q or mouse wheel | **R** / **⇆** |
 | Grenade / Melee | G / V | **G** / **⚔** |
-| Scores / Loadout | Tab / Esc | ☰ / ⚙ |
+| Rifle grenade | B | **RG** |
+| Scores / Loadout | Tab / L | ☰ / ⚙ |
+
+Look sensitivity is set on the main menu.
 
 ## Project layout
 
 - `server.js`: HTTP and WebSocket server, rooms, game simulation, hit detection, bot AI (A* pathfinding)
 - `public/shared.js`: weapon and attachment stats, map, and collision code shared by the server and the client
-- `public/game.js`: client rendering, input, prediction, audio, loadout builder
+- `public/game.js`: first-person Three.js client: world, soldiers, procedural gun and attachment models, viewmodel, input, prediction, audio, loadout builder
+- `public/vendor/three.module.min.js`: Three.js r170, bundled locally so the Android app needs no CDN
 - `public/index.html`, `style.css`: menus and HUD
 - `public/manifest.webmanifest`, `sw.js`, `icons/`: installable PWA
 

@@ -15,6 +15,7 @@
 </head>
 <body>
   <canvas id="game"></canvas>
+  <canvas id="overlay"></canvas>
 
   <!-- Main menu -->
   <div id="menu" class="screen">
@@ -31,6 +32,11 @@
             <option value="0">0 &mdash; humans only</option><option value="2">2</option><option value="3">3</option>
             <option value="4" selected>4</option><option value="5">5</option><option value="6">6</option>
           </select>
+        </label>
+      </div>
+      <div class="row">
+        <label>Look sensitivity <span id="sensVal"></span>
+          <input id="sens" type="range" min="0.2" max="3" step="0.05" value="1">
         </label>
       </div>
       <h2>Loadout</h2>
@@ -56,6 +62,16 @@
     </div>
   </div>
 
+  <!-- Pause (desktop pointer lock released) -->
+  <div id="pause" class="screen hidden">
+    <div class="panel">
+      <h2>Paused</h2>
+      <p class="tag">Click to return to the fight.</p>
+      <button id="resume" class="big">RESUME</button>
+      <button id="pauseLoadout" class="ghost">Change loadout</button>
+    </div>
+  </div>
+
   <!-- Scoreboard -->
   <div id="scoreboard" class="screen hidden"><div class="panel wide"><div id="scoreContent"></div></div></div>
 
@@ -76,6 +92,7 @@
       <div id="weaponAtts"></div>
       <div id="ammo"><b id="ammoMag">30</b> / <span id="ammoRes">120</span></div>
       <div id="nades"></div>
+      <div id="stance"></div>
     </div>
     <div id="center"></div>
     <div id="ping"></div>
@@ -94,12 +111,14 @@
     <button class="tbtn" id="tSwap">&#8646;</button>
     <button class="tbtn" id="tNade">G</button>
     <button class="tbtn" id="tMelee">&#9876;</button>
-    <button class="tbtn" id="tSprint">RUN</button>
+    <button class="tbtn" id="tFire2">FIRE</button>
+    <button class="tbtn" id="tCrouch">&#8615;</button>
+    <button class="tbtn hidden" id="tRg">RG</button>
   </div>
 
   <div id="rotate" class="hidden">Rotate your device to landscape</div>
 
   <script src="shared.js"></script>
-  <script src="game.js"></script>
+  <script type="module" src="game.js"></script>
 </body>
 </html>

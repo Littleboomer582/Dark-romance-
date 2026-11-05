@@ -102,7 +102,7 @@ const BOT_NAMES = ['Pvt. Baker', 'Cpl. Hayes', 'Sgt. Kowalski', 'Pvt. Ivanov', '
 const BOT_LOADOUTS = [
   { primary: 'thompson', atts: ['grip', 'extmag'] }, { primary: 'mp40', atts: ['aperture'] }, { primary: 'ppsh41', atts: ['grip'] },
   { primary: 'stg44', atts: ['grip'] }, { primary: 'garand', atts: ['aperture'] }, { primary: 'bar', atts: ['grip'] },
-  { primary: 'kar98k', atts: ['scope'] }, { primary: 'trenchgun', atts: ['grip'] }, { primary: 'svt40', atts: [] },
+  { primary: 'kar98k', atts: ['scope', 'fmj'] }, { primary: 'garand', atts: ['riflenade', 'aperture'] }, { primary: 'trenchgun', atts: ['grip'] }, { primary: 'svt40', atts: [] },
   { primary: 'mg42', atts: ['grip'] }, { primary: 'type100', atts: ['extmag'] }, { primary: 'gewehr43', atts: ['aperture'] },
 ];
 const SECONDARIES = ['colt', 'p38', 'tt33', 'nambu', 'revolver'];
@@ -190,7 +190,11 @@ class Room {
     p.lastHurt = 0;
     p.spawnProtectUntil = now + 2000;
     p.loadout = p.pendingLoadout;
-    p.guns = [makeGun(p.loadout.primary, p.loadout.atts), makeGun(p.loadout.secondary, [])];
+    p.guns = [makeGun(p.loadout.primary, p.loadout.atts), makeGun(p.loadout.secondary, p.loadout.secAtts)];
+    p.rgren = p.guns[0].stats.rifleNades;
+    p.nextRg = 0;
+    p.crouch = false;
+    p.pitch = 0;
     p.slot = 0;
     p.reloadEnd = 0;
     p.nextShot = now + 300;
@@ -215,11 +219,11 @@ class Room {
     p.nextShot = Math.max(p.nextShot, now + 350);
   }
 
-  damage(victim, dmg, attacker, weapon, now) {
+  damage(victim, dmg, attacker, weapon, now, hs) {
     if (!victim.alive || victim.spawnProtectUntil > now) return;
     victim.hp -= dmg;
     victim.lastHurt = now;
-    this.events.push({ e: 'h', i: victim.id, b: attacker.id, x: victim.x | 0, y: victim.y | 0 });
+    this.events.push({ e: 'h', i: victim.id, b: attacker.id, x: victim.x | 0, y: victim.y | 0, hs: hs ? 1 : 0 });
     if (victim.hp <= 0) {
       victim.hp = 0;
       victim.alive = false;
@@ -227,43 +231,53 @@ class Room {
       victim.respawnAt = now + RESPAWN_MS;
       victim.killedBy = attacker.id;
       victim.killedWith = weapon;
+      victim.killerPos = [attacker.x | 0, attacker.y | 0];
       if (attacker !== victim && attacker.team !== victim.team) {
         attacker.kills++;
         if (this.state === 'playing') this.score[attacker.team]++;
       }
-      this.events.push({ e: 'k', k: attacker.id, v: victim.id, w: weapon });
+      this.events.push({ e: 'k', k: attacker.id, v: victim.id, w: weapon, hs: hs ? 1 : 0 });
     }
   }
 
   fire(p, now) {
     const g = this.gun(p);
     const st = g.stats;
-    let spread = st.spread * (p.ads ? st.adsMult : 1) * (p.moving ? st.moveMult : 1);
-    if (st.bipod && p.ads && !p.moving) spread *= 0.35;
-    if (p.sprint && !p.ads) spread *= 1.5;
+    let spread = S.currentSpread(st, p.ads, p.moving, p.crouch, p.sprint);
+    if (p.bot) spread = Math.max(spread * 2, 0.025); // bots are less accurate than players
     p.spawnProtectUntil = 0;
     g.ammo--;
     p.nextShot = now + st.rate;
     if (!st.suppressed) p.radarUntil = now + 2000;
-    const maxD = st.range * (st.pellets > 1 ? 1.4 : 1.8);
+    const maxD = st.range * (st.pellets > 1 ? 1.4 : 2.2);
+    const eye = S.eyeHeight(p.crouch);
     const hits = new Map();
     for (let i = 0; i < st.pellets; i++) {
-      const a = p.ang + (Math.random() * 2 - 1) * spread;
-      const dx = Math.cos(a), dy = Math.sin(a);
-      let hd = S.rayWalls(p.x, p.y, dx, dy, maxD);
-      let hit = null;
+      // random point in a cone around the aim direction
+      const r = Math.sqrt(Math.random()) * spread, th = Math.random() * Math.PI * 2;
+      const yaw = p.ang + Math.cos(th) * r, pitch = S.clamp(p.pitch + Math.sin(th) * r, -1.5, 1.5);
+      const cp = Math.cos(pitch);
+      const dx = Math.cos(yaw) * cp, dy = Math.sin(yaw) * cp, dh = Math.sin(pitch);
+      const wallD = S.rayWorld(p.x, p.y, eye, dx, dy, dh, maxD, st.fmj);
+      const thinD = st.fmj ? S.rayWorld(p.x, p.y, eye, dx, dy, dh, maxD, false) : wallD;
+      let hd = wallD, hit = null;
       for (const q of this.players.values()) {
         if (!q.alive || q.team === p.team) continue;
-        const t = S.rayCircle(p.x, p.y, dx, dy, q.x, q.y, S.PLAYER_R);
+        const t = S.rayCylinder(p.x, p.y, eye, dx, dy, dh, q.x, q.y, S.PLAYER_R, S.bodyHeight(q.crouch));
         if (t < hd) { hd = t; hit = q; }
       }
-      this.events.push({ e: 's', i: p.id, x: p.x | 0, y: p.y | 0, a: +a.toFixed(3), d: hd | 0, w: g.id, s: st.suppressed ? 1 : 0, p: i });
+      const endD = hit ? hd : thinD;
+      this.events.push({ e: 's', i: p.id, x: p.x | 0, y: p.y | 0, z: eye, a: +yaw.toFixed(4), q: +pitch.toFixed(4), d: endD | 0, w: g.id, s: st.noFlash ? 1 : 0, u: st.suppressed ? 1 : 0, p: i, k: hit ? 1 : 0 });
       if (hit) {
-        const dmg = st.dmg * (hd > st.range ? 0.65 : 1);
-        hits.set(hit, (hits.get(hit) || 0) + dmg);
+        const hh = eye + dh * hd;
+        const hs = hh > S.bodyHeight(hit.crouch) - S.HEAD_ZONE;
+        let dmg = st.dmg * (hd > st.range ? 0.65 : 1) * (hs ? S.HEADSHOT_MULT : 1);
+        if (hd > thinD) dmg *= 0.7; // penetrated cover
+        const prev = hits.get(hit) || { dmg: 0, hs: false };
+        hits.set(hit, { dmg: prev.dmg + dmg, hs: prev.hs || hs });
       }
     }
-    for (const [q, dmg] of hits) this.damage(q, dmg, p, st.name, now);
+    for (const [q, h] of hits) this.damage(q, h.dmg, p, st.name, now, h.hs);
     if (g.ammo <= 0) this.startReload(p, now);
   }
 
@@ -294,38 +308,93 @@ class Room {
     }
   }
 
-  throwNade(p, dist, now) {
-    if (!p.alive || p.nades <= 0) return;
+  launch(p, kind, speed, up, now, fuse) {
+    const eye = S.eyeHeight(p.crouch);
+    const cp = Math.cos(p.pitch);
+    const dx = Math.cos(p.ang) * cp, dy = Math.sin(p.ang) * cp, dh = Math.sin(p.pitch);
+    const start = S.moveCircle(p.x, p.y, dx * 18, dy * 18, 4);
+    this.nades.push({ id: nextId++, kind, owner: p.id, team: p.team, x: start[0], y: start[1], h: eye - 6,
+      vx: dx * speed, vy: dy * speed, vh: dh * speed + up, explodeAt: now + fuse });
+  }
+
+  throwNade(p, now) {
+    if (!p.alive || p.nades <= 0 || this.state !== 'playing') return;
     p.nades--;
-    dist = S.clamp(+dist || 400, 80, 600);
-    const speed = dist * 1.6;
-    this.nades.push({ id: nextId++, owner: p.id, team: p.team, x: p.x + Math.cos(p.ang) * 20, y: p.y + Math.sin(p.ang) * 20,
-      vx: Math.cos(p.ang) * speed, vy: Math.sin(p.ang) * speed, explodeAt: now + 2200 });
+    p.spawnProtectUntil = 0;
+    this.launch(p, 'frag', 620, 180, now, 2400);
     this.events.push({ e: 'n', i: p.id });
+  }
+
+  fireRifleNade(p, now) {
+    if (!p.alive || p.slot !== 0 || p.rgren <= 0 || now < p.nextRg || p.reloadEnd || this.state !== 'playing') return;
+    p.rgren--;
+    p.nextRg = now + 1200;
+    p.nextShot = Math.max(p.nextShot, now + 600);
+    p.spawnProtectUntil = 0;
+    p.radarUntil = now + 2000;
+    this.launch(p, 'rg', 1250, 60, now, 4000);
+    this.events.push({ e: 'rg', i: p.id });
+  }
+
+  explode(n, now) {
+    n.dead = true;
+    this.events.push({ e: 'x', x: n.x | 0, y: n.y | 0, z: Math.max(0, n.h) | 0 });
+    const owner = this.players.get(n.owner) || { id: n.owner, team: n.team, kills: 0 };
+    const name = n.kind === 'rg' ? 'Rifle Grenade' : 'Frag Grenade';
+    for (const q of this.players.values()) {
+      if (!q.alive || (q.team === n.team && q.id !== n.owner)) continue;
+      const qh = S.bodyHeight(q.crouch) * 0.5;
+      const d = Math.hypot(q.x - n.x, q.y - n.y, (qh - n.h) * 0.6);
+      if (d > 200 || !S.hasLOS3(n.x, n.y, Math.max(n.h, 6), q.x, q.y, qh)) continue;
+      q.spawnProtectUntil = Math.min(q.spawnProtectUntil, now);
+      this.damage(q, d < 60 ? 150 : 150 * (1 - (d - 60) / 140), owner, name, now, false);
+    }
+  }
+
+  blockedAt(x, y, h, r) {
+    if (x < r || y < r || x > S.MAP_W - r || y > S.MAP_H - r) return true;
+    for (const w of S.WALLS) {
+      if (h > w.ht) continue;
+      if (x + r > w.x && x - r < w.x + w.w && y + r > w.y && y - r < w.y + w.h) return true;
+    }
+    return false;
   }
 
   updateNades(dt, now) {
     for (const n of this.nades) {
-      const fr = Math.pow(0.2, dt);
-      n.vx *= fr; n.vy *= fr;
-      const nx = n.x + n.vx * dt;
-      const rx = S.resolveCircle(nx, n.y, 5);
-      if (rx[0] !== nx || rx[1] !== n.y) n.vx *= -0.5; else n.x = nx;
-      const ny = n.y + n.vy * dt;
-      const ry = S.resolveCircle(n.x, ny, 5);
-      if (ry[0] !== n.x || ry[1] !== ny) n.vy *= -0.5; else n.y = ny;
-      if (now >= n.explodeAt) {
-        n.dead = true;
-        this.events.push({ e: 'x', x: n.x | 0, y: n.y | 0 });
-        const owner = this.players.get(n.owner) || { id: n.owner, team: n.team, kills: 0 };
+      n.vh -= 900 * dt;
+      if (n.kind === 'rg') {
+        const sx = n.vx * dt, sy = n.vy * dt, sh = n.vh * dt;
+        const len = Math.hypot(sx, sy, sh) || 1;
+        const t = S.rayWorld(n.x, n.y, n.h, sx / len, sy / len, sh / len, len);
+        let hitPlayer = false;
         for (const q of this.players.values()) {
-          if (!q.alive || (q.team === n.team && q.id !== n.owner)) continue;
-          const d = Math.hypot(q.x - n.x, q.y - n.y);
-          if (d > 190 || !S.hasLOS(n.x, n.y, q.x, q.y)) continue;
-          q.spawnProtectUntil = Math.min(q.spawnProtectUntil, now);
-          this.damage(q, d < 60 ? 150 : 150 * (1 - (d - 60) / 130), owner, 'Frag Grenade', now);
+          if (!q.alive || q.team === n.team) continue;
+          if (S.rayCylinder(n.x, n.y, n.h, sx / len, sy / len, sh / len, q.x, q.y, S.PLAYER_R + 4, S.bodyHeight(q.crouch)) <= len) hitPlayer = true;
         }
+        const k = Math.min(t, len) / len;
+        n.x += sx * k; n.y += sy * k; n.h += sh * k;
+        if (t < len || hitPlayer || now >= n.explodeAt) this.explode(n, now);
+        continue;
       }
+      // frag: bounces off walls and the ground
+      const nx = n.x + n.vx * dt;
+      if (this.blockedAt(nx, n.y, n.h, 4)) n.vx *= -0.45; else n.x = nx;
+      const ny = n.y + n.vy * dt;
+      if (this.blockedAt(n.x, ny, n.h, 4)) n.vy *= -0.45; else n.y = ny;
+      const nh = n.h + n.vh * dt;
+      if (nh <= 3) {
+        n.h = 3;
+        if (n.vh < 0) n.vh = -n.vh * 0.35;
+        if (n.vh < 40) n.vh = 0;
+        const fr = Math.pow(0.08, dt);
+        n.vx *= fr; n.vy *= fr;
+      } else if (this.blockedAt(n.x, n.y, nh, 4)) {
+        // landed on top of cover
+        n.vh = Math.abs(n.vh) < 60 ? 0 : -n.vh * 0.35;
+        n.vx *= 0.7; n.vy *= 0.7;
+      } else n.h = nh;
+      if (now >= n.explodeAt) this.explode(n, now);
     }
     this.nades = this.nades.filter((n) => !n.dead);
   }
@@ -365,10 +434,11 @@ class Room {
       const mx = S.clamp(+mxRaw || 0, -1, 1), my = S.clamp(+myRaw || 0, -1, 1);
       p.ads = !!(flags & 1);
       p.sprint = !!(flags & 2);
+      p.crouch = !!(flags & 4);
       p.moving = Math.hypot(mx, my) > 0.1;
-      p.sprintActive = p.sprint && !p.ads && p.moving;
+      p.sprintActive = p.sprint && !p.ads && !p.crouch && p.moving;
       if (!p.alive || this.state !== 'playing') continue;
-      const sp = S.moveSpeed(this.gun(p).stats, p.ads, p.sprint);
+      const sp = S.moveSpeed(this.gun(p).stats, p.ads, p.sprint, p.crouch);
       const pos = S.applyMove(p.x, p.y, mx, my, dt, sp);
       p.x = pos[0]; p.y = pos[1];
     }
@@ -400,11 +470,11 @@ class Room {
     const ps = [];
     for (const p of this.players.values()) {
       const flags = (p.team === 'axis' ? 1 : 0) | (p.alive ? 2 : 0) | (p.ads ? 4 : 0) | (p.radarUntil > now ? 8 : 0)
-        | (p.spawnProtectUntil > now ? 16 : 0) | (p.reloadEnd ? 32 : 0);
-      ps.push({ i: p.id, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, a: +p.ang.toFixed(3), h: Math.ceil(p.hp), f: flags, w: this.gun(p).id });
+        | (p.spawnProtectUntil > now ? 16 : 0) | (p.reloadEnd ? 32 : 0) | (p.crouch ? 64 : 0) | (p.sprintActive ? 128 : 0);
+      ps.push({ i: p.id, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, a: +p.ang.toFixed(3), q: +(p.pitch || 0).toFixed(2), h: Math.ceil(p.hp), f: flags, w: this.gun(p).id + ':' + this.gun(p).stats.atts.join(',') });
     }
     const base = {
-      t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0]), sc: [this.score.allies, this.score.axis],
+      t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, n.kind === 'rg' ? 1 : 0]), sc: [this.score.allies, this.score.axis],
       tl: Math.max(0, this.endsAt - now), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
     };
     this.events = [];
@@ -413,8 +483,8 @@ class Room {
       const g = this.gun(p);
       base.you = {
         seq: p.lastSeq, x: p.x, y: p.y, alive: p.alive, hp: Math.ceil(p.hp), slot: p.slot, ammo: g.ammo, res: g.reserve,
-        rl: p.reloadEnd ? Math.max(0, p.reloadEnd - now) / g.stats.reload : 0, nd: p.nades, team: p.team,
-        ri: p.alive ? 0 : Math.max(0, p.respawnAt - now), kb: p.killedBy, kw: p.killedWith,
+        rl: p.reloadEnd ? Math.max(0, p.reloadEnd - now) / g.stats.reload : 0, nd: p.nades, rg: p.rgren || 0, team: p.team,
+        ri: p.alive ? 0 : Math.max(0, p.respawnAt - now), kb: p.killedBy, kw: p.killedWith, kx: p.killerPos,
         g: p.guns.map((x) => [x.id, x.stats.atts]),
       };
       p.ws.send(JSON.stringify(base));
@@ -432,7 +502,7 @@ function basePlayer(name) {
   return {
     id: nextId++, name, team: 'allies', x: 0, y: 0, ang: 0, hp: 100, alive: false, kills: 0, deaths: 0,
     input: { fire: false }, lastSeq: 0, moveBudget: 0.3, ads: false, sprint: false, moving: false, triggerHeld: false,
-    pendingLoadout: S.sanitizeLoadout({}), guns: [], slot: 0, nades: 2, respawnAt: 0,
+    pendingLoadout: S.sanitizeLoadout({}), guns: [], slot: 0, nades: 2, respawnAt: 0, pitch: 0, crouch: false, rgren: 0,
   };
 }
 
@@ -457,30 +527,34 @@ function botThink(room, p, now, dt) {
     for (const q of room.players.values()) {
       if (!q.alive || q.team === p.team) continue;
       const d = Math.hypot(q.x - p.x, q.y - p.y);
-      if (d < 1100 && d < bd && S.hasLOS(p.x, p.y, q.x, q.y)) { bd = d; best = q; }
+      if (d < 1300 && d < bd && S.hasLOS3(p.x, p.y, S.eyeHeight(p.crouch), q.x, q.y, S.bodyHeight(q.crouch) - 10)) { bd = d; best = q; }
     }
-    if (best && best !== b.target) { b.acquiredAt = now; b.aimErr = (Math.random() - 0.5) * 0.6; }
+    if (best && best !== b.target) { b.acquiredAt = now; b.aimErr = (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.5); }
     b.target = best;
   }
-  let mx = 0, my = 0, fire = false, ads = false, sprint = false;
+  let mx = 0, my = 0, fire = false, ads = false, sprint = false, crouch = false;
   const t = b.target && b.target.alive ? b.target : null;
   if (t) {
     const dx = t.x - p.x, dy = t.y - p.y, d = Math.hypot(dx, dy);
-    b.aimErr *= Math.pow(0.15, dt);
+    b.aimErr *= Math.pow(0.3, dt);
     const want = Math.atan2(dy, dx) + b.aimErr + (Math.random() - 0.5) * 0.04;
     let da = Math.atan2(Math.sin(want - p.ang), Math.cos(want - p.ang));
     p.ang += S.clamp(da, -7 * dt, 7 * dt);
+    const wantPitch = Math.atan2(S.bodyHeight(t.crouch) * 0.75 - S.eyeHeight(p.crouch), d) + b.aimErr * 0.3;
+    p.pitch += S.clamp(wantPitch - p.pitch, -4 * dt, 4 * dt);
     ads = d > 300 && st.cls !== 'Shotgun';
-    const ready = now - b.acquiredAt > 380;
-    fire = ready && Math.abs(da) < 0.18 && d < st.range * 1.4;
+    const ready = now - b.acquiredAt > 600;
+    fire = ready && Math.abs(da) < 0.1 && d < st.range * 1.3;
     if (!st.auto) fire = fire && !p.triggerHeld;
-    if (now > b.strafeUntil) { b.strafe = Math.random() < 0.5 ? -1 : 1; b.strafeUntil = now + 600 + Math.random() * 1000; }
+    if (now > b.strafeUntil) { b.strafe = Math.random() < 0.5 ? -1 : 1; b.strafeUntil = now + 600 + Math.random() * 1000; b.crouch = d > 450 && Math.random() < 0.35; }
+    crouch = b.crouch;
+    if (p.rgren > 0 && d > 300 && d < 900 && Math.random() < 0.004 * (dt * 60)) room.fireRifleNade(p, now);
     const ux = dx / d, uy = dy / d;
     let fwd = d > st.range * 0.8 ? 1 : d < 140 ? -1 : 0;
     if (st.cls === 'Shotgun' && d > 120) fwd = 1;
     mx = ux * fwd + -uy * b.strafe * 0.8;
     my = uy * fwd + ux * b.strafe * 0.8;
-    if (Math.random() < 0.002 * (dt * 60) && p.nades > 0 && d > 220 && d < 550) room.throwNade(p, d, now);
+    if (Math.random() < 0.002 * (dt * 60) && p.nades > 0 && d > 220 && d < 550) { const sp = p.pitch; p.pitch = 0.35 + (d - 220) / 1200; room.throwNade(p, now); p.pitch = sp; }
     b.path = null;
   } else {
     if (g.ammo < st.mag * 0.5) room.startReload(p, now);
@@ -504,6 +578,7 @@ function botThink(room, p, now, dt) {
       const want = Math.atan2(dy, dx);
       const da = Math.atan2(Math.sin(want - p.ang), Math.cos(want - p.ang));
       p.ang += S.clamp(da, -5 * dt, 5 * dt);
+      p.pitch *= Math.pow(0.1, dt);
       sprint = b.path.length > 6;
     }
     if (now >= b.stuckCheck) {
@@ -515,10 +590,11 @@ function botThink(room, p, now, dt) {
   p.input.fire = fire;
   p.ads = ads;
   p.sprint = sprint;
+  p.crouch = crouch;
   p.moving = Math.hypot(mx, my) > 0.1;
-  p.sprintActive = sprint && !ads && p.moving;
+  p.sprintActive = sprint && !ads && !crouch && p.moving;
   if (room.state === 'playing') {
-    const pos = S.applyMove(p.x, p.y, mx, my, dt, S.moveSpeed(st, ads, sprint));
+    const pos = S.applyMove(p.x, p.y, mx, my, dt, S.moveSpeed(st, ads, sprint, crouch));
     p.x = pos[0]; p.y = pos[1];
   }
 }
@@ -555,12 +631,14 @@ wss.on('connection', (ws) => {
       case 'in':
         if (Array.isArray(m.l)) room.applyInputs(player, m.l.slice(0, 20));
         if (Number.isFinite(m.a) && player.alive) player.ang = m.a;
+        if (Number.isFinite(m.p) && player.alive) player.pitch = S.clamp(m.p, -1.45, 1.45);
         player.input.fire = !!m.f;
         break;
       case 'reload': if (player.alive) room.startReload(player, now); break;
       case 'swap': if (player.alive) room.swap(player, now); break;
       case 'melee': room.melee(player, now); break;
-      case 'nade': room.throwNade(player, m.d, now); break;
+      case 'nade': room.throwNade(player, now); break;
+      case 'rg': room.fireRifleNade(player, now); break;
       case 'loadout': player.pendingLoadout = S.sanitizeLoadout(m.loadout); break;
       case 'team': {
         const other = player.team === 'allies' ? 'axis' : 'allies';

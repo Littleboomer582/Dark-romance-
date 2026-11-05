@@ -12,6 +12,7 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
   font-family: "Trebuchet MS", "Segoe UI", Roboto, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
 canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#overlay { pointer-events: none; z-index: 5; }
 .hidden { display: none !important; }
 
 .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px;
@@ -81,8 +82,9 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
 #nades { font-size: 13px; color: var(--muted); }
 #center { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); text-align: center; font-size: 22px; white-space: pre-line; }
 #center small { font-size: 14px; color: var(--muted); font-weight: normal; }
-#ping { position: absolute; left: max(12px, env(safe-area-inset-left)); top: max(176px, calc(env(safe-area-inset-top) + 168px)); font-size: 11px; color: var(--muted); font-weight: normal; }
-#menuBtns { position: absolute; top: max(8px, env(safe-area-inset-top)); left: max(176px, calc(env(safe-area-inset-left) + 168px)); display: flex; gap: 6px; pointer-events: auto; }
+#stance { font-size: 12px; color: var(--muted); }
+#ping { position: absolute; left: max(12px, env(safe-area-inset-left)); top: max(166px, calc(env(safe-area-inset-top) + 158px)); font-size: 11px; color: var(--muted); font-weight: normal; }
+#menuBtns { position: absolute; top: max(8px, env(safe-area-inset-top)); left: max(166px, calc(env(safe-area-inset-left) + 158px)); display: flex; gap: 6px; pointer-events: auto; }
 .hudBtn { width: 38px; height: 38px; border-radius: 8px; background: rgba(0,0,0,.5); color: var(--text); border: 1px solid var(--line); font-size: 18px; }
 
 /* touch */
@@ -90,11 +92,14 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
 .tbtn { position: absolute; pointer-events: auto; border-radius: 50%; border: 2px solid rgba(255,240,200,.45); background: rgba(0,0,0,.35);
   color: rgba(255,240,200,.9); font-weight: bold; font-size: 14px; touch-action: none; }
 .tbtn.on { background: rgba(217,164,65,.55); }
-#tFire { width: 84px; height: 84px; right: calc(max(16px, env(safe-area-inset-right)) + 150px); bottom: 110px; font-size: 16px; }
-#tAds { width: 60px; height: 60px; right: calc(max(16px, env(safe-area-inset-right)) + 70px); bottom: 190px; }
-#tReload { width: 52px; height: 52px; right: calc(max(16px, env(safe-area-inset-right)) + 245px); bottom: 70px; }
-#tSwap { width: 52px; height: 52px; right: calc(max(16px, env(safe-area-inset-right)) + 0px); bottom: 210px; font-size: 20px; }
-#tNade { width: 52px; height: 52px; right: calc(max(16px, env(safe-area-inset-right)) + 245px); bottom: 135px; }
-#tMelee { width: 52px; height: 52px; right: calc(max(16px, env(safe-area-inset-right)) + 150px); bottom: 205px; font-size: 20px; }
-#tSprint { width: 56px; height: 56px; left: calc(max(16px, env(safe-area-inset-left)) + 10px); bottom: 190px; }
+#tFire { width: 86px; height: 86px; right: calc(max(16px, env(safe-area-inset-right)) + 120px); bottom: 120px; font-size: 16px; }
+#tFire2 { width: 64px; height: 64px; left: calc(max(16px, env(safe-area-inset-left)) + 24px); bottom: 150px; font-size: 13px; }
+#tAds { width: 62px; height: 62px; right: calc(max(16px, env(safe-area-inset-right)) + 20px); bottom: 190px; }
+#tCrouch { width: 54px; height: 54px; right: calc(max(16px, env(safe-area-inset-right)) + 220px); bottom: 70px; font-size: 22px; }
+#tReload { width: 52px; height: 52px; right: calc(max(16px, env(safe-area-inset-right)) + 220px); bottom: 140px; }
+#tSwap { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 26px); bottom: 118px; font-size: 20px; }
+#tNade { width: 52px; height: 52px; right: calc(max(16px, env(safe-area-inset-right)) + 130px); bottom: 220px; }
+#tMelee { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 200px); bottom: 210px; font-size: 20px; }
+#tRg { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 262px); bottom: 210px; font-size: 13px; }
+@media (pointer: coarse) { #ping { top: max(56px, calc(env(safe-area-inset-top) + 50px)); left: max(166px, calc(env(safe-area-inset-left) + 158px)); } #killfeed { font-size: 11px; max-width: 36vw; } #killfeed div:nth-last-child(n+4) { display: none; } }
 #rotate { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: #111; font-size: 20px; text-align: center; padding: 16px; }
