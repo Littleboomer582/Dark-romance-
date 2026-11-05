@@ -26,6 +26,9 @@
         <label>Callsign<input id="name" maxlength="16" placeholder="Soldier"></label>
         <label>Room code<input id="room" maxlength="8" placeholder="PUBLIC"></label>
       </div>
+      <div class="row" id="serverRow">
+        <label>Game server (for online play)<input id="server" placeholder="https://your-game-server.example.com" autocomplete="url"></label>
+      </div>
       <div class="row">
         <label>Bots per team (if you create the room)
           <select id="bots">
@@ -41,7 +44,8 @@
       </div>
       <h2>Loadout</h2>
       <div id="loadoutMenu"></div>
-      <button id="deploy" class="big">DEPLOY</button>
+      <button id="deploy" class="big">DEPLOY ONLINE</button>
+      <button id="offline" class="big alt">PLAY OFFLINE VS BOTS</button>
       <button id="install" class="ghost hidden">Install as app</button>
       <p class="help" id="controlsHelp"></p>
       <p class="err" id="err"></p>
@@ -119,6 +123,7 @@
   <div id="rotate" class="hidden">Rotate your device to landscape</div>
 
   <script src="shared.js"></script>
+  <script src="sim.js"></script>
   <script type="module" src="game.js"></script>
 </body>
 </html>

@@ -156,22 +156,49 @@ const killfeed = [];
 const hurtDirs = [];
 let hitMarker = 0, hitKill = false, hurtFlash = 0, shake = 0, centerMsg = null, deathPos = null;
 
+const servedOverHttp = /^https?:$/.test(location.protocol);
 function serverUrl() {
-  const q = new URLSearchParams(location.search).get('server') || window.GAME_SERVER;
-  if (q) return q.replace(/^http/, 'ws').replace(/\/?$/, '') + '/ws';
-  return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  let q = $('server').value.trim() || new URLSearchParams(location.search).get('server') || window.GAME_SERVER;
+  if (q) {
+    if (!/^(https?|wss?):\/\//i.test(q)) q = 'https://' + q;
+    return q.replace(/^http/i, 'ws').replace(/\/(ws)?\/?$/, '') + '/ws';
+  }
+  if (servedOverHttp) return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  return null;
 }
 
-function connect() {
-  $('err').textContent = 'Connecting...';
+// Offline play: run the game simulation inside this page and talk to it through a loopback "socket".
+function localSocket() {
+  const sock = { readyState: 0, onopen: null, onmessage: null, onclose: null,
+    send(s) { queueMicrotask(() => conn.message(s)); },
+    close() { clearInterval(timer); conn.close(); sock.readyState = 3; if (sock.onclose) sock.onclose(); } };
+  const serverSide = { readyState: 1, send: (s) => queueMicrotask(() => { if (sock.onmessage) sock.onmessage({ data: s }); }) };
+  const conn = window.Sim.connect(serverSide);
+  const timer = setInterval(window.Sim.tick, window.Sim.TICK_MS);
+  setTimeout(() => { sock.readyState = 1; if (sock.onopen) sock.onopen(); });
+  return sock;
+}
+
+let offlineMode = false;
+function connect(offline) {
+  offlineMode = !!offline;
   const name = $('name').value.trim() || 'Soldier';
-  const room = $('room').value.trim() || 'PUBLIC';
-  save('fl_name', $('name').value.trim()); save('fl_room', $('room').value.trim());
-  try { ws = new WebSocket(serverUrl()); } catch (e) { $('err').textContent = 'Could not connect: ' + e.message; return; }
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, room, bots: +$('bots').value, loadout }));
+  const room = offline ? 'OFFLINE' : ($('room').value.trim() || 'PUBLIC');
+  save('fl_name', $('name').value.trim()); save('fl_room', $('room').value.trim()); save('fl_server', $('server').value.trim());
+  let bots = +$('bots').value;
+  if (offline) {
+    if (bots < 2) bots = 4;
+    ws = localSocket();
+  } else {
+    const url = serverUrl();
+    if (!url) { $('err').textContent = 'Enter your game server address for online play, or press PLAY OFFLINE VS BOTS.'; $('server').focus(); return; }
+    $('err').textContent = 'Connecting...';
+    try { ws = new WebSocket(url); } catch (e) { $('err').textContent = 'Could not connect: ' + e.message; return; }
+  }
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, room, bots, loadout }));
   ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onMessage(m); };
   ws.onclose = () => {
-    if (joined) showMenu('Disconnected from server.');
+    if (joined) showMenu(offlineMode ? '' : 'Disconnected from server.');
     else $('err').textContent = 'Could not reach the game server.';
     joined = false;
   };
@@ -225,7 +252,7 @@ function onState(m) {
         x = r[0]; y = r[1];
       }
     }
-    if (!wasAlive && you.alive) { yaw = you.team === 'allies' ? 0 : Math.PI; pitch = 0; crouchOn = false; deathPos = null; }
+    if (!wasAlive && you.alive) { yaw = Math.atan2(S.MAP_H / 2 - y, S.MAP_W / 2 - x); pitch = 0; crouchOn = false; deathPos = null; }
     if (wasAlive && !you.alive) deathPos = { x: pred.x, y: pred.y, yaw };
     wasAlive = you.alive;
     pred.x = x; pred.y = y;
@@ -930,7 +957,7 @@ function renderScores() {
     for (const p of teams[t]) html += `<tr class="${p.i === myId ? 'me' : ''}"><td>${esc(p.n)}</td><td>${p.k}</td><td>${p.d}</td></tr>`;
     html += '</table></div>';
   }
-  $('scoreContent').innerHTML = html + '</div><p class="tag">Ping ' + Math.round(ping) + ' ms &middot; tap to close</p>';
+  $('scoreContent').innerHTML = html + '</div><p class="tag">' + (offlineMode ? 'Offline match' : 'Ping ' + Math.round(ping) + ' ms') + ' &middot; tap to close</p>';
 }
 function toggleLoadout(force) {
   const el = $('loadoutScreen');
@@ -960,11 +987,16 @@ function goFullscreen(toggle) {
   const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : null;
   if (p && p.then) p.then(() => { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); }).catch(() => {});
 }
-$('deploy').addEventListener('click', () => {
+function deploy(offline) {
   initAudio();
   if (isTouch && !matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) goFullscreen(false);
-  connect();
-});
+  connect(offline);
+}
+$('deploy').addEventListener('click', () => deploy(false));
+$('offline').addEventListener('click', () => deploy(true));
+$('server').value = loadSaved('fl_server', '');
+if (servedOverHttp) $('server').placeholder = 'Leave empty to use this site (' + location.host + ')';
+if (!window.Sim) $('offline').classList.add('hidden');
 $('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('deploy').click(); });
 
 let deferredPrompt = null;
@@ -1347,7 +1379,7 @@ function updateHud(now) {
   setText('ammoMag', String(you.ammo)); setText('ammoRes', String(you.res));
   setText('nades', 'Frag x' + you.nd + (you.rg ? ' · Rifle Gren x' + you.rg : '') + (you.rl > 0 ? ' · RELOADING' : you.ammo === 0 ? ' · RELOAD!' : ''));
   setText('stance', crouchOn ? 'CROUCHED' : '');
-  setText('ping', Math.round(ping) + ' ms · ' + roomCode);
+  setText('ping', offlineMode ? 'OFFLINE' : Math.round(ping) + ' ms · ' + roomCode);
   if (isTouch) $('tRg').classList.toggle('hidden', !(you.rg > 0 && you.slot === 0));
   if (isTouch) $('tCrouch').classList.toggle('on', crouchOn);
   const kf = killfeed.filter((k) => now - k.t < 6000).map((k) => `<div><span class="c-${teamOf(k.k)}">${esc(nameOf(k.k))}</span> <span class="w">[${esc(k.w)}${k.hs ? ' · HS' : ''}]</span> <span class="c-${teamOf(k.v)}">${esc(nameOf(k.v))}</span></div>`).join('');

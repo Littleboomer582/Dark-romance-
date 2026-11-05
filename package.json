@@ -4,7 +4,8 @@
   "description": "Online team-vs-team WWII top-down shooter with weapon attachments. Runs in the browser and installs on Android as an app.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "node scripts/build-standalone.js"
   },
   "engines": {
     "node": ">=18"

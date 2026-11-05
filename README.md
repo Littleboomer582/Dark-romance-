@@ -26,6 +26,15 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
 - Frag grenades, knife and bayonet melee, aiming down sights, sprinting, crouching, health that regenerates, a rotating minimap with radar, damage-direction indicators, a death cam, a killfeed and a scoreboard.
 - The server decides all hits (authoritative server). Your own movement is predicted on your device so it feels responsive.
 
+## Play in a web browser (one HTML file)
+
+Open **`frontline-1945.html`** in Chrome, Edge, Firefox or Safari. You can double-click it, and no install or server is needed.
+
+- **PLAY OFFLINE VS BOTS** runs a full match inside the page.
+- **DEPLOY ONLINE** plays against other people. Enter your game server's address (see "Put it online" below) in the *Game server* box.
+
+You can email this file or share it on a USB stick. To rebuild it after changing the code, run `npm run build`.
+
 ## Run it
 
 ```bash
@@ -74,7 +83,9 @@ Look sensitivity is set on the main menu.
 
 ## Project layout
 
-- `server.js`: HTTP and WebSocket server, rooms, game simulation, hit detection, bot AI (A* pathfinding)
+- `server.js`: HTTP and WebSocket server (thin wrapper around `sim.js`)
+- `public/sim.js`: game simulation: rooms, hit detection, grenades, bot AI (A* pathfinding). Runs on the server and in the browser for offline play
+- `scripts/build-standalone.js`: builds the single-file `frontline-1945.html`
 - `public/shared.js`: weapon and attachment stats, map, and collision code shared by the server and the client
 - `public/game.js`: first-person Three.js client: world, soldiers, procedural gun and attachment models, viewmodel, input, prediction, audio, loadout builder
 - `public/vendor/three.module.min.js`: Three.js r170, bundled locally so the Android app needs no CDN

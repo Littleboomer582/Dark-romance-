@@ -32,6 +32,7 @@ button { font-family: inherit; cursor: pointer; }
 button.big { width: 100%; margin-top: 14px; padding: 14px; font-size: 20px; letter-spacing: 4px; font-weight: bold;
   background: linear-gradient(#8a6a2a, #5d4719); color: #fff4d6; border: 1px solid #c79a45; border-radius: 8px; }
 button.big:active { transform: translateY(1px); }
+button.big.alt { background: linear-gradient(#4a5a34, #2f3a20); border-color: #7f9a55; font-size: 17px; }
 button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transparent; color: var(--text); border: 1px solid var(--line); border-radius: 8px; font-size: 14px; }
 .help { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 12px 0 0; }
 .err { color: #ff8a7a; min-height: 1em; }
