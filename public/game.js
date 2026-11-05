@@ -268,7 +268,7 @@ function playOffline() {
   const sock = localSocket();
   attach(sock);
   wsOpen = null;
-  sock.onopen = () => sock.send(JSON.stringify({ t: 'join', name: playerName(), room: 'OFFLINE', quick: true, bots: +$('offBots').value, loadout }));
+  sock.onopen = () => sock.send(JSON.stringify({ t: 'join', name: playerName(), room: 'OFFLINE', quick: true, bots: +$('offBots').value, map: $('offMap').value, mode: $('offMode').value, loadout }));
 }
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
@@ -310,6 +310,11 @@ function onMessage(m) {
       break;
     case 'lobby':
       lobbyInfo = m;
+      if (m.settings && m.state !== 'playing') {
+        currentMode = m.settings.mode;
+        buildWorld(m.settings.map);
+        if (objModeId !== currentMode || objMapId !== m.settings.map) buildObjectives(m.settings.map, currentMode);
+      }
       if (!joined || !m.lobby) break;
       if (m.state === 'playing' && lastLobbyState !== 'playing') enterGame();
       else if (m.state === 'lobby' && lastLobbyState !== 'lobby') { enterLobby(); }
@@ -342,6 +347,10 @@ function onState(m) {
   snaps.push({ t: now, p: map });
   while (snaps.length > 30) snaps.shift();
   nadeState = m.n;
+  if (m.mp && m.mp !== worldMapId) buildWorld(m.mp);
+  if (m.md) currentMode = m.md;
+  if (m.mp && (m.md !== objModeId || m.mp !== objMapId)) buildObjectives(m.mp, m.md || 'tdm');
+  objState = m.ob;
   match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb;
   lastStateAt = now;
   if (match.st === 'ended' && m.st === 'playing') { match.winner = null; killfeed.length = 0; }
@@ -368,6 +377,31 @@ function onState(m) {
 
 const nameOf = (id) => { const r = roster.get(id); return r ? r.n : '?'; };
 const teamOf = (id) => { const r = roster.get(id); return r ? r.t : 'allies'; };
+
+const TEAMNAME = { allies: 'Allies', axis: 'Axis' };
+function objNotice(e, now) {
+  if (!you) return;
+  const mine = e.t === you.team;
+  let text = '', good = null;
+  if (currentMode === 'dom') {
+    const L = 'ABC'[e.i] || '';
+    if (e.k === 'cap') { text = `${TEAMNAME[e.t]} captured ${L}`; good = mine; }
+    else if (e.k === 'neutral') text = `${L} neutralized`;
+  } else if (currentMode === 'ctf') {
+    // e.t is the team that owns the flag
+    if (e.k === 'take') { text = mine ? 'Your flag was taken!' : e.i === myId ? 'You have the enemy flag! Get it home!' : 'Enemy flag taken'; good = !mine; }
+    else if (e.k === 'drop') { text = mine ? 'Your flag was dropped' : 'Enemy flag dropped'; good = mine; }
+    else if (e.k === 'return') { text = mine ? 'Your flag was returned' : 'Enemy flag returned'; good = mine; }
+    else if (e.k === 'cap') { text = mine ? 'The enemy captured your flag!' : 'Your team captured the flag!'; good = !mine; }
+  } else if (currentMode === 'hq' && e.k === 'move') text = 'The HQ has moved';
+  if (!text) return;
+  killfeed.push({ notice: text, good, t: now });
+  while (killfeed.length > 5) killfeed.shift();
+  centerMsg = { text, t: now };
+  if (good === true) { tone(660, 0.12, 0.07, 'triangle'); setTimeout(() => tone(990, 0.16, 0.07, 'triangle'), 120); }
+  else if (good === false) { tone(330, 0.2, 0.07, 'sawtooth'); }
+  else tone(520, 0.1, 0.05, 'triangle');
+}
 
 function handleEvent(e, now) {
   switch (e.e) {
@@ -431,6 +465,7 @@ function handleEvent(e, now) {
     case 'n': tone(300, 0.05, 0.05, 'sine'); break;
     case 'rg': noise(700, 0.35, volAt(pred.x, pred.y) * 0.5); if (e.i === myId) { vmImpulse(0.08); if (vm && vm.gun.parts.rifleNade) vm.gun.parts.rifleNade.visible = false; } break;
     case 'end': match.winner = e.w; break;
+    case 'obj': objNotice(e, now); break;
   }
 }
 
@@ -441,10 +476,9 @@ renderer.autoClear = false;
 renderer.shadowMap.enabled = !isTouch;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-const FOG = 0xb4ae98;
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(FOG);
-scene.fog = new THREE.Fog(FOG, 600, 3200);
+scene.background = new THREE.Color(0xb4ae98);
+scene.fog = new THREE.Fog(0xb4ae98, 600, 3200);
 const camera = new THREE.PerspectiveCamera(75, 1, 1, 6000);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
@@ -463,7 +497,7 @@ const vmFill = new THREE.DirectionalLight(0xc8d4ff, 0.5); vmFill.position.set(-1
 const vmMuzzleLight = new THREE.PointLight(0xffb060, 0, 60, 1.5); vmScene.add(vmMuzzleLight);
 const muzzleLight = new THREE.PointLight(0xffb060, 0, 420, 1.6);
 
-scene.add(new THREE.HemisphereLight(0xcfd6db, 0x5a5034, 1.25));
+const hemi = new THREE.HemisphereLight(0xcfd6db, 0x5a5034, 1.25); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff0d0, 2.0);
 sun.position.set(S.MAP_W / 2 - 900, 1400, S.MAP_H / 2 - 500);
 sun.target.position.set(S.MAP_W / 2, 0, S.MAP_H / 2);
@@ -498,131 +532,373 @@ function canvasTex(size, draw, rx, ry) {
   t.anisotropy = 4;
   return t;
 }
-const texGround = canvasTex(256, (g, n) => {
-  const r = rng(7);
-  g.fillStyle = '#6a6440'; g.fillRect(0, 0, n, n);
-  for (let i = 0; i < 2600; i++) {
-    const v = r();
-    g.fillStyle = v < 0.3 ? 'rgba(80,70,40,.45)' : v < 0.6 ? 'rgba(120,115,70,.4)' : v < 0.85 ? 'rgba(70,72,40,.45)' : 'rgba(140,130,100,.4)';
-    g.fillRect(r() * n, r() * n, 1 + r() * 4, 1 + r() * 4);
-  }
-}, 40, 28);
-const texBrick = canvasTex(128, (g, n) => {
-  g.fillStyle = '#857a68'; g.fillRect(0, 0, n, n);
-  const r = rng(3);
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 4; col++) {
-      const x = col * 32 + (row % 2) * 16, y = row * 16;
-      const c = 110 + r() * 40;
-      g.fillStyle = `rgb(${c},${c * 0.9},${c * 0.78})`; g.fillRect(x + 1, y + 1, 30, 14);
-      g.fillRect(x - 127, y + 1, 30, 14);
-    }
-  }
-  for (let i = 0; i < 300; i++) { g.fillStyle = 'rgba(40,30,20,.25)'; g.fillRect(r() * n, r() * n, 2, 2); }
-});
-const texWood = canvasTex(128, (g, n) => {
-  g.fillStyle = '#8a6234'; g.fillRect(0, 0, n, n);
-  const r = rng(11);
-  for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? '#7d5730' : '#916838'; g.fillRect(0, i * 32 + 1, n, 30); }
-  for (let i = 0; i < 160; i++) { g.strokeStyle = 'rgba(60,40,20,.35)'; g.beginPath(); const y = r() * n; g.moveTo(0, y); g.lineTo(n, y + (r() - 0.5) * 6); g.stroke(); }
-  g.strokeStyle = '#4e3418'; g.lineWidth = 8; g.strokeRect(4, 4, n - 8, n - 8);
-  g.beginPath(); g.moveTo(8, 8); g.lineTo(n - 8, n - 8); g.stroke();
-});
-const texConcrete = canvasTex(128, (g, n) => {
-  g.fillStyle = '#8c887c'; g.fillRect(0, 0, n, n);
-  const r = rng(5);
-  for (let i = 0; i < 900; i++) { const c = 100 + r() * 70; g.fillStyle = `rgba(${c},${c},${c * 0.95},.35)`; g.fillRect(r() * n, r() * n, 2 + r() * 3, 2 + r() * 3); }
-  g.fillStyle = 'rgba(50,45,40,.3)'; g.fillRect(0, n - 10, n, 10);
-});
-const texBag = canvasTex(64, (g, n) => {
-  g.fillStyle = '#b09a6b'; g.fillRect(0, 0, n, n);
-  const r = rng(9);
-  for (let i = 0; i < 300; i++) { g.fillStyle = r() < 0.5 ? 'rgba(120,100,60,.4)' : 'rgba(200,185,140,.3)'; g.fillRect(r() * n, r() * n, 2, 2); }
-});
+// ---- textures (built on first use, shared between maps)
+const TEX = {};
+function tex(name) {
+  if (TEX[name]) return TEX[name];
+  const speckle = (g, n, base, cols, count, seed, maxSize) => {
+    const r = rng(seed); g.fillStyle = base; g.fillRect(0, 0, n, n);
+    for (let i = 0; i < count; i++) { g.fillStyle = cols[Math.floor(r() * cols.length)]; g.fillRect(r() * n, r() * n, 1 + r() * (maxSize || 4), 1 + r() * (maxSize || 4)); }
+  };
+  const T = {
+    dirt: () => canvasTex(256, (g, n) => speckle(g, n, '#6a6440', ['rgba(80,70,40,.45)', 'rgba(120,115,70,.4)', 'rgba(70,72,40,.45)', 'rgba(140,130,100,.4)'], 2600, 7), 40, 28),
+    village: () => canvasTex(256, (g, n) => {
+      speckle(g, n, '#776a4c', ['rgba(95,85,60,.5)', 'rgba(130,118,88,.45)', 'rgba(80,90,50,.35)'], 2200, 21);
+      const r = rng(4);
+      for (let i = 0; i < 70; i++) { const c = 110 + r() * 40; g.fillStyle = `rgba(${c},${c * 0.95},${c * 0.85},.55)`; g.beginPath(); g.ellipse(r() * n, r() * n, 5 + r() * 6, 4 + r() * 5, r() * 3, 0, TAU); g.fill(); }
+    }, 40, 28),
+    snow: () => canvasTex(256, (g, n) => {
+      speckle(g, n, '#e9edf2', ['rgba(200,210,222,.5)', 'rgba(255,255,255,.7)', 'rgba(185,195,210,.35)'], 2600, 31, 5);
+      const r = rng(8); for (let i = 0; i < 30; i++) { g.strokeStyle = 'rgba(170,180,195,.25)'; g.lineWidth = 2; g.beginPath(); const x = r() * n, y = r() * n; g.moveTo(x, y); g.lineTo(x + 30 * r(), y + 8 * r()); g.stroke(); }
+    }, 30, 20),
+    sand: () => canvasTex(256, (g, n) => {
+      speckle(g, n, '#cdb683', ['rgba(180,160,110,.45)', 'rgba(225,210,170,.5)', 'rgba(160,140,95,.35)'], 3000, 41, 3);
+      const r = rng(6); for (let i = 0; i < 40; i++) { g.strokeStyle = 'rgba(170,150,105,.3)'; g.lineWidth = 2; g.beginPath(); const y = r() * n; g.moveTo(0, y); for (let x = 0; x <= n; x += 16) g.lineTo(x, y + Math.sin(x * 0.05 + i) * 4); g.stroke(); }
+    }, 34, 24),
+    brick: () => canvasTex(128, (g, n) => {
+      g.fillStyle = '#857a68'; g.fillRect(0, 0, n, n);
+      const r = rng(3);
+      for (let row = 0; row < 8; row++) for (let col = 0; col < 4; col++) {
+        const x = col * 32 + (row % 2) * 16, y = row * 16, c = 110 + r() * 40;
+        g.fillStyle = `rgb(${c},${c * 0.9},${c * 0.78})`; g.fillRect(x + 1, y + 1, 30, 14); g.fillRect(x - 127, y + 1, 30, 14);
+      }
+      for (let i = 0; i < 300; i++) { g.fillStyle = 'rgba(40,30,20,.25)'; g.fillRect(r() * n, r() * n, 2, 2); }
+    }),
+    plaster: () => canvasTex(256, (g, n) => {
+      speckle(g, n, '#cbbd9b', ['rgba(180,165,130,.5)', 'rgba(215,205,180,.5)', 'rgba(150,135,105,.3)'], 1800, 51, 5);
+      const r = rng(12);
+      for (let i = 0; i < 5; i++) { // exposed brick where plaster fell off
+        const x = r() * n, y = r() * n, w = 30 + r() * 50, h = 18 + r() * 30;
+        for (let by = 0; by < h; by += 8) for (let bx = 0; bx < w; bx += 16) { const c = 120 + r() * 40; g.fillStyle = `rgb(${c},${c * 0.75},${c * 0.6})`; g.fillRect(x + bx + (by % 16 ? 8 : 0), y + by, 14, 6); }
+      }
+      g.fillStyle = '#5a4026'; g.fillRect(0, 0, n, 8); g.fillRect(0, n - 10, n, 10); // timber beams
+      g.fillRect(n / 2 - 4, 0, 8, n);
+      g.fillStyle = 'rgba(60,50,40,.35)'; g.fillRect(0, n - 30, n, 20); // grime
+    }),
+    wood: () => canvasTex(128, (g, n) => {
+      g.fillStyle = '#8a6234'; g.fillRect(0, 0, n, n);
+      const r = rng(11);
+      for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? '#7d5730' : '#916838'; g.fillRect(0, i * 32 + 1, n, 30); }
+      for (let i = 0; i < 160; i++) { g.strokeStyle = 'rgba(60,40,20,.35)'; g.beginPath(); const y = r() * n; g.moveTo(0, y); g.lineTo(n, y + (r() - 0.5) * 6); g.stroke(); }
+      g.strokeStyle = '#4e3418'; g.lineWidth = 8; g.strokeRect(4, 4, n - 8, n - 8);
+      g.beginPath(); g.moveTo(8, 8); g.lineTo(n - 8, n - 8); g.stroke();
+    }),
+    logs: () => canvasTex(128, (g, n) => {
+      g.fillStyle = '#5b3f26'; g.fillRect(0, 0, n, n);
+      for (let i = 0; i < 6; i++) { const y = i * (n / 6); const gr = g.createLinearGradient(0, y, 0, y + n / 6); gr.addColorStop(0, '#3e2a18'); gr.addColorStop(0.5, '#7a5634'); gr.addColorStop(1, '#3a2615'); g.fillStyle = gr; g.fillRect(0, y, n, n / 6); }
+      const r = rng(19); for (let i = 0; i < 120; i++) { g.strokeStyle = 'rgba(30,20,10,.3)'; g.beginPath(); const y = r() * n; g.moveTo(r() * n, y); g.lineTo(r() * n, y + 1); g.stroke(); }
+    }),
+    concrete: () => canvasTex(128, (g, n) => {
+      g.fillStyle = '#8c887c'; g.fillRect(0, 0, n, n);
+      const r = rng(5);
+      for (let i = 0; i < 900; i++) { const c = 100 + r() * 70; g.fillStyle = `rgba(${c},${c},${c * 0.95},.35)`; g.fillRect(r() * n, r() * n, 2 + r() * 3, 2 + r() * 3); }
+      g.fillStyle = 'rgba(50,45,40,.3)'; g.fillRect(0, n - 10, n, 10);
+    }),
+    stone: () => canvasTex(128, (g, n) => {
+      g.fillStyle = '#7d786d'; g.fillRect(0, 0, n, n);
+      const r = rng(23);
+      for (let i = 0; i < 40; i++) { const c = 95 + r() * 60; g.fillStyle = `rgb(${c},${c * 0.97},${c * 0.9})`; g.beginPath(); g.ellipse(r() * n, r() * n, 8 + r() * 12, 6 + r() * 9, r() * 3, 0, TAU); g.fill(); g.strokeStyle = 'rgba(40,38,34,.5)'; g.stroke(); }
+    }),
+    rock: () => canvasTex(128, (g, n) => speckle(g, n, '#7b7a74', ['rgba(60,60,58,.5)', 'rgba(150,148,140,.45)', 'rgba(100,96,88,.4)'], 1500, 61, 6)),
+    snowrock: () => canvasTex(128, (g, n) => { speckle(g, n, '#9da3ab', ['rgba(230,236,242,.8)', 'rgba(120,125,132,.5)'], 1500, 71, 7); g.fillStyle = 'rgba(240,244,248,.85)'; g.fillRect(0, 0, n, n * 0.3); }),
+    jungle: () => canvasTex(128, (g, n) => speckle(g, n, '#2f4a24', ['rgba(60,95,40,.6)', 'rgba(25,40,18,.6)', 'rgba(90,120,55,.4)'], 2500, 81, 6)),
+    bag: () => canvasTex(64, (g, n) => speckle(g, n, '#b09a6b', ['rgba(120,100,60,.4)', 'rgba(200,185,140,.3)'], 300, 9, 2)),
+    bagSnow: () => canvasTex(64, (g, n) => { speckle(g, n, '#a8987a', ['rgba(120,100,60,.4)', 'rgba(240,244,248,.6)'], 300, 9, 2); g.fillStyle = 'rgba(240,244,248,.7)'; g.fillRect(0, 0, n, n * 0.35); }),
+  };
+  TEX[name] = T[name]();
+  return TEX[name];
+}
 
-// ------------------------------------------------------------- world
+// ---- per-map look
+const THEMES = {
+  ruins: { fog: 0xb4ae98, near: 600, far: 3200, sky: 0xcfd6db, gnd: 0x5a5034, hemi: 1.25, sun: 0xfff0d0, sunI: 2.0, ground: 'dirt', perim: 'concrete', craters: 40, craterCol: 0x3b3524, wall: 'brick' },
+  village: { fog: 0xc8c1ad, near: 650, far: 3300, sky: 0xd8dcd8, gnd: 0x6a5a3a, hemi: 1.3, sun: 0xffe9c4, sunI: 2.1, ground: 'village', perim: 'stone', craters: 14, craterCol: 0x4a4030, wall: 'stone' },
+  winter: { fog: 0xd3d9e1, near: 300, far: 2300, sky: 0xe8f0fa, gnd: 0x9aa2ad, hemi: 1.45, sun: 0xe6eeff, sunI: 1.3, ground: 'snow', perim: 'snowrock', craters: 10, craterCol: 0xaab2bd, wall: 'logs', snow: true, treeline: 'pine' },
+  island: { fog: 0xbcd6e2, near: 800, far: 3600, sky: 0xd6eefb, gnd: 0xa08f62, hemi: 1.3, sun: 0xfff2d6, sunI: 2.5, ground: 'sand', perim: 'jungle', craters: 22, craterCol: 0x8a7a52, wall: 'concrete', treeline: 'palm' },
+};
 const M = {
-  ground: new THREE.MeshLambertMaterial({ map: texGround }),
-  bag: new THREE.MeshLambertMaterial({ map: texBag }),
+  bag: new THREE.MeshLambertMaterial({ map: null }),
   metal: new THREE.MeshStandardMaterial({ color: 0x2a2b2c, metalness: 0.7, roughness: 0.45 }),
   dark: new THREE.MeshStandardMaterial({ color: 0x18191a, metalness: 0.5, roughness: 0.6 }),
-  wood: new THREE.MeshStandardMaterial({ color: 0x6e4524, metalness: 0, roughness: 0.7 }),
-  wood2: new THREE.MeshStandardMaterial({ color: 0x8c5a2c, metalness: 0, roughness: 0.65 }),
-  blade: new THREE.MeshStandardMaterial({ color: 0xc8c8c8, metalness: 0.95, roughness: 0.2 }),
-  glass: new THREE.MeshStandardMaterial({ color: 0x223355, metalness: 0.2, roughness: 0.05, emissive: 0x0a1020 }),
-  tape: new THREE.MeshStandardMaterial({ color: 0x3c3b2e, roughness: 0.9 }),
-  strap: new THREE.MeshStandardMaterial({ color: 0x4c3a22, roughness: 0.9 }),
-  brass: new THREE.MeshStandardMaterial({ color: 0x9a7a30, metalness: 0.8, roughness: 0.35 }),
   nade: new THREE.MeshStandardMaterial({ color: 0x38452a, roughness: 0.7 }),
   skin: new THREE.MeshLambertMaterial({ color: 0xc99d78 }),
+  bark: new THREE.MeshLambertMaterial({ color: 0x4a3626 }),
+  palmBark: new THREE.MeshLambertMaterial({ color: 0x8a7556 }),
+  pine: new THREE.MeshLambertMaterial({ color: 0x24402c }),
+  pineSnow: new THREE.MeshLambertMaterial({ color: 0xeef3f8 }),
+  frond: new THREE.MeshLambertMaterial({ color: 0x3f6b2a, side: THREE.DoubleSide }),
+  fence: new THREE.MeshLambertMaterial({ color: 0x6b5236 }),
+  water: new THREE.MeshLambertMaterial({ color: 0x9fb8c0 }),
 };
-function wallMat(tex, w, h) { const t = tex.clone(); t.needsUpdate = true; t.repeat.set(w, h); return new THREE.MeshLambertMaterial({ map: t }); }
+function wallMat(name, w, h) { const t = tex(name).clone(); t.needsUpdate = true; t.repeat.set(w, h); return new THREE.MeshLambertMaterial({ map: t }); }
 
-(function buildWorld() {
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(S.MAP_W + 3000, S.MAP_H + 3000), M.ground);
-  ground.rotation.x = -Math.PI / 2; ground.position.set(S.MAP_W / 2, 0, S.MAP_H / 2);
-  ground.receiveShadow = true;
-  scene.add(ground);
-  // craters
-  const r = rng(42);
-  const craterMat = new THREE.MeshLambertMaterial({ color: 0x3b3524, transparent: true, opacity: 0.55, depthWrite: false });
-  for (let i = 0; i < 40; i++) {
+let worldGroup = null, worldMapId = null, snowPts = null;
+function disposeGroup(g) {
+  const shared = Object.values(M), sharedTex = Object.values(TEX);
+  g.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material && !shared.includes(o.material)) { if (o.material.map && !sharedTex.includes(o.material.map)) o.material.map.dispose(); o.material.dispose(); }
+  });
+}
+
+function pineTree(g, x, z, h, snowy, r) {
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.75, r, h * 0.45, 8), M.bark); trunk.position.set(x, h * 0.22, z); trunk.castShadow = true; g.add(trunk);
+  for (let i = 0; i < 3; i++) {
+    const cr = (2.6 - i * 0.6) * r * 1.6, ch = h * 0.36, y = h * (0.3 + i * 0.22);
+    const c = new THREE.Mesh(new THREE.ConeGeometry(cr, ch, 9), M.pine); c.position.set(x, y + ch / 2, z); c.rotation.y = i; c.castShadow = true; g.add(c);
+    if (snowy) { const sn = new THREE.Mesh(new THREE.ConeGeometry(cr * 0.8, ch * 0.45, 9), M.pineSnow); sn.position.set(x, y + ch * 0.8, z); sn.rotation.y = i + 0.5; g.add(sn); }
+  }
+}
+function palmTree(g, x, z, h, r, seed) {
+  const rr = rng(seed);
+  const lean = (rr() - 0.5) * 0.5, dir = rr() * TAU;
+  let px = x, pz = z, py = 0;
+  const segs = 6;
+  for (let i = 0; i < segs; i++) { // gently curving trunk
+    const len = h / segs, t = i / segs;
+    const dx = Math.cos(dir) * Math.sin(lean * t * 2) * len, dz = Math.sin(dir) * Math.sin(lean * t * 2) * len;
+    const sgm = new THREE.Mesh(new THREE.CylinderGeometry(r * (0.85 - t * 0.3), r * (1 - t * 0.3), len * 1.04, 8), M.palmBark);
+    sgm.position.set(px + dx / 2, py + len / 2, pz + dz / 2);
+    sgm.lookAt(px + dx, py + len, pz + dz); sgm.rotateX(Math.PI / 2); sgm.castShadow = true; g.add(sgm);
+    px += dx; pz += dz; py += len;
+  }
+  for (let i = 0; i < 8; i++) { // fronds
+    const a = (i / 8) * TAU + rr() * 0.3;
+    const f = new THREE.Mesh(new THREE.ConeGeometry(9, 90, 4, 1, true), M.frond);
+    f.scale.set(1, 1, 0.18);
+    f.position.set(px + Math.cos(a) * 38, py - 14, pz + Math.sin(a) * 38);
+    f.rotation.set(0, -a, 0); f.rotateZ(-Math.PI / 2 - 0.45);
+    f.castShadow = true; g.add(f);
+  }
+}
+
+function buildWorld(mapId) {
+  if (worldMapId === mapId) return;
+  const map = S.useMap(mapId);
+  worldMapId = mapId;
+  if (worldGroup) { scene.remove(worldGroup); disposeGroup(worldGroup); }
+  if (snowPts) { scene.remove(snowPts); snowPts.geometry.dispose(); snowPts = null; }
+  const th = THEMES[map.theme] || THEMES.ruins;
+  const g = new THREE.Group();
+  worldGroup = g;
+  scene.background = new THREE.Color(th.fog);
+  scene.fog = new THREE.Fog(th.fog, th.near, th.far);
+  hemi.color.setHex(th.sky); hemi.groundColor.setHex(th.gnd); hemi.intensity = th.hemi;
+  sun.color.setHex(th.sun); sun.intensity = th.sunI;
+  const gt = tex(th.ground);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(S.MAP_W + 3000, S.MAP_H + 3000), new THREE.MeshLambertMaterial({ map: gt }));
+  ground.rotation.x = -Math.PI / 2; ground.position.set(S.MAP_W / 2, 0, S.MAP_H / 2); ground.receiveShadow = true;
+  g.add(ground);
+  const r = rng(42 + mapId.length);
+  const craterMat = new THREE.MeshLambertMaterial({ color: th.craterCol, transparent: true, opacity: 0.5, depthWrite: false });
+  for (let i = 0; i < th.craters; i++) {
     const c = new THREE.Mesh(new THREE.CircleGeometry(20 + r() * 40, 18), craterMat);
     c.rotation.x = -Math.PI / 2; c.position.set(r() * S.MAP_W, 0.3 + i * 0.01, r() * S.MAP_H); c.receiveShadow = true;
-    scene.add(c);
+    g.add(c);
   }
-  // walls, crates
-  let bagCount = 0;
   const bags = [];
   for (const w of S.WALLS) {
+    const cx = w.x + w.w / 2, cz = w.y + w.h / 2;
     if (w.k === 'sand') {
-      const horiz = w.w >= w.h;
-      const len = horiz ? w.w : w.h, dep = horiz ? w.h : w.w;
+      const horiz = w.w >= w.h, len = horiz ? w.w : w.h, dep = horiz ? w.h : w.w;
       const n = Math.max(1, Math.round(len / 24)), rows = Math.round(w.ht / 11.5), cols = Math.max(1, Math.round(dep / 17));
       for (let ry = 0; ry < rows; ry++) for (let c = 0; c < cols; c++) for (let i = 0; i < n; i++) {
-        const along = (i + 0.5 + (ry % 2 ? 0.25 : -0.25)) * (len / n);
-        if (along > len) continue;
+        const along = (i + 0.5 + (ry % 2 ? 0.25 : -0.25)) * (len / n); if (along > len) continue;
         const across = (c + 0.5) * (dep / cols);
         bags.push({ x: horiz ? w.x + along : w.x + across, z: horiz ? w.y + across : w.y + along, y: 5.8 + ry * 11, rot: horiz ? 0 : Math.PI / 2, sx: len / n / 2 + 1.5, sz: dep / cols / 2 + 1 });
-        bagCount++;
       }
       continue;
     }
-    const mat = w.k === 'wall' ? wallMat(texBrick, Math.max(w.w, w.h) / 64, w.ht / 64) : wallMat(texWood, Math.max(1, Math.round(Math.max(w.w, w.h) / 50)), Math.max(1, Math.round(w.ht / 50)));
+    if (w.k === 'tree') {
+      if (map.theme === 'island') palmTree(g, cx, cz, 250 + r() * 60, w.w / 2, Math.floor(cx * 7 + cz));
+      else pineTree(g, cx, cz, 300 + r() * 80, map.theme === 'winter', w.w / 2);
+      continue;
+    }
+    if (w.k === 'log') {
+      const horiz = w.w >= w.h, len = horiz ? w.w : w.h, rad = w.ht / 3.2;
+      for (const [o, y] of [[-rad, rad], [rad, rad], [0, rad * 2.6]]) {
+        const lg = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, len, 10), wallMat('logs', 1, 1));
+        lg.rotation.z = Math.PI / 2; if (!horiz) lg.rotation.y = Math.PI / 2;
+        lg.position.set(cx + (horiz ? 0 : o * 0.9), y, cz + (horiz ? o * 0.9 : 0)); lg.castShadow = lg.receiveShadow = true; g.add(lg);
+      }
+      if (map.theme === 'winter') { const sn = new THREE.Mesh(new THREE.BoxGeometry(horiz ? len : 6, 3, horiz ? 6 : len), M.pineSnow); sn.position.set(cx, rad * 3.6 + 1, cz); g.add(sn); }
+      continue;
+    }
+    if (w.k === 'rock') {
+      const rk = new THREE.Mesh(new THREE.DodecahedronGeometry(1, 1), wallMat(map.theme === 'winter' ? 'snowrock' : 'rock', 2, 2));
+      rk.scale.set(w.w * 0.62, w.ht * 0.75, w.h * 0.62); rk.position.set(cx, w.ht * 0.42, cz); rk.rotation.y = r() * 3;
+      rk.castShadow = rk.receiveShadow = true; g.add(rk);
+      if (map.theme === 'village') { // the square's fountain
+        const basin = new THREE.Mesh(new THREE.CylinderGeometry(w.w * 0.62, w.w * 0.66, 22, 20), wallMat('stone', 3, 0.4)); basin.position.set(cx, 11, cz); g.add(basin);
+        const water = new THREE.Mesh(new THREE.CircleGeometry(w.w * 0.55, 20), M.water); water.rotation.x = -Math.PI / 2; water.position.set(cx, 20, cz); g.add(water);
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(6, 9, 70, 10), wallMat('stone', 1, 1)); col.position.set(cx, 35, cz); g.add(col);
+        rk.visible = false;
+      }
+      continue;
+    }
+    if (w.k === 'fence') {
+      const horiz = w.w >= w.h, len = horiz ? w.w : w.h;
+      for (let i = 0; i <= Math.round(len / 30); i++) { const t = i / Math.round(len / 30); const post = new THREE.Mesh(new THREE.BoxGeometry(5, w.ht, 5), M.fence); post.position.set(horiz ? w.x + t * len : cx, w.ht / 2, horiz ? cz : w.y + t * len); post.castShadow = true; g.add(post); }
+      for (const y of [w.ht * 0.35, w.ht * 0.8]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(horiz ? len : 3, 5, horiz ? 3 : len), M.fence); rail.position.set(cx, y, cz); rail.castShadow = true; g.add(rail); }
+      continue;
+    }
+    let mat;
+    if (w.k === 'crate') mat = wallMat('wood', Math.max(1, Math.round(Math.max(w.w, w.h) / 50)), Math.max(1, Math.round(w.ht / 50)));
+    else if (w.k === 'house') mat = wallMat('plaster', Math.max(w.w, w.h) / 140, w.ht / 170);
+    else if (w.k === 'bunker') mat = wallMat('concrete', Math.max(w.w, w.h) / 100, w.ht / 100);
+    else mat = wallMat(th.wall, Math.max(w.w, w.h) / 64, w.ht / 64);
     const m = new THREE.Mesh(new THREE.BoxGeometry(w.w, w.ht, w.h), mat);
-    m.position.set(w.x + w.w / 2, w.ht / 2, w.y + w.h / 2);
-    m.castShadow = m.receiveShadow = true;
-    scene.add(m);
-    if (w.k === 'wall') { // broken top
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(w.w + 4, 6, w.h + 4), wallMat(texConcrete, 2, 0.2));
-      cap.position.set(w.x + w.w / 2, w.ht + 3, w.y + w.h / 2); cap.castShadow = true; scene.add(cap);
+    m.position.set(cx, w.ht / 2, cz); m.castShadow = m.receiveShadow = true; g.add(m);
+    if (w.k === 'wall' || w.k === 'house' || w.k === 'bunker') {
+      const capMat = map.theme === 'winter' ? M.pineSnow : wallMat(w.k === 'house' ? 'wood' : 'concrete', 2, 0.2);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(w.w + 4, w.k === 'bunker' ? 10 : 6, w.h + 4), capMat);
+      cap.position.set(cx, w.ht + (w.k === 'bunker' ? 5 : 3), cz); cap.castShadow = true; g.add(cap);
     }
   }
-  const bagGeo = new THREE.SphereGeometry(1, 10, 6);
-  const inst = new THREE.InstancedMesh(bagGeo, M.bag, bagCount);
-  const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
-  bags.forEach((b, i) => {
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), b.rot + (r() - 0.5) * 0.1);
-    sc.set(b.sx, 6.3, b.sz); pos.set(b.x, b.y, b.z);
-    mtx.compose(pos, q, sc); inst.setMatrixAt(i, mtx);
-  });
-  inst.castShadow = inst.receiveShadow = true;
-  scene.add(inst);
-  // perimeter
+  if (bags.length) {
+    const inst = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 10, 6), new THREE.MeshLambertMaterial({ map: tex(map.theme === 'winter' ? 'bagSnow' : 'bag') }), bags.length);
+    const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
+    bags.forEach((b, i) => { q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), b.rot + (r() - 0.5) * 0.1); sc.set(b.sx, 6.3, b.sz); pos.set(b.x, b.y, b.z); mtx.compose(pos, q, sc); inst.setMatrixAt(i, mtx); });
+    inst.castShadow = inst.receiveShadow = true; g.add(inst);
+  }
+  // perimeter + tree line beyond it
   const per = 180;
   for (const [x, z, w, d] of [[S.MAP_W / 2, -20, S.MAP_W + 80, 40], [S.MAP_W / 2, S.MAP_H + 20, S.MAP_W + 80, 40], [-20, S.MAP_H / 2, 40, S.MAP_H], [S.MAP_W + 20, S.MAP_H / 2, 40, S.MAP_H]]) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, per, d), wallMat(texConcrete, Math.max(w, d) / 128, per / 128));
-    m.position.set(x, per / 2, z); m.receiveShadow = true; scene.add(m);
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, per, d), wallMat(th.perim, Math.max(w, d) / 128, per / 128));
+    m.position.set(x, per / 2, z); m.receiveShadow = true; g.add(m);
+  }
+  if (th.treeline) {
+    const tr = rng(99);
+    for (let i = 0; i < 70; i++) {
+      const side = i % 4, t = tr();
+      const x = side < 2 ? t * S.MAP_W : side === 2 ? -80 - tr() * 160 : S.MAP_W + 80 + tr() * 160;
+      const z = side >= 2 ? t * S.MAP_H : side === 0 ? -80 - tr() * 160 : S.MAP_H + 80 + tr() * 160;
+      if (th.treeline === 'pine') pineTree(g, x, z, 380 + tr() * 140, true, 16); else palmTree(g, x, z, 300 + tr() * 120, 13, i * 13);
+    }
   }
   // spawn flags
   for (const [x, col] of [[60, 0x3d6fb0], [S.MAP_W - 60, 0xb03a30]]) {
     for (const z of [300, 1300]) {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 160, 6), M.metal); pole.position.set(x, 80, z); scene.add(pole);
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 160, 6), M.metal); pole.position.set(x, 80, z); g.add(pole);
       const flag = new THREE.Mesh(new THREE.PlaneGeometry(50, 30), new THREE.MeshLambertMaterial({ color: col, side: THREE.DoubleSide }));
-      flag.position.set(x + (x < 100 ? 25 : -25), 140, z); scene.add(flag);
+      flag.position.set(x + (x < 100 ? 25 : -25), 140, z); g.add(flag);
     }
   }
-})();
+  scene.add(g);
+  // falling snow
+  if (th.snow) {
+    const N = isTouch ? 1500 : 3500, arr = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) { arr[i * 3] = (Math.random() - 0.5) * 1400; arr[i * 3 + 1] = Math.random() * 500; arr[i * 3 + 2] = (Math.random() - 0.5) * 1400; }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    snowPts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 2.4, transparent: true, opacity: 0.85, depthWrite: false }));
+    snowPts.frustumCulled = false;
+    scene.add(snowPts);
+  }
+  buildObjectives(mapId, currentMode);
+}
+function updateSnow(dt, now) {
+  if (!snowPts) return;
+  const a = snowPts.geometry.attributes.position.array;
+  for (let i = 0; i < a.length; i += 3) {
+    a[i + 1] -= (40 + (i % 7) * 6) * dt; a[i] += Math.sin(now / 900 + i) * 8 * dt;
+    if (a[i + 1] < 0) { a[i + 1] = 500; a[i] = (Math.random() - 0.5) * 1400; a[i + 2] = (Math.random() - 0.5) * 1400; }
+  }
+  snowPts.geometry.attributes.position.needsUpdate = true;
+  snowPts.position.set(camera.position.x, 0, camera.position.z);
+}
+
+// ---- objectives in the world
+let objGroup = null, objMapId = null, objModeId = null, currentMode = 'tdm', objState = null;
+const objView = { dom: [], flags: [], hq: null, markers: [] };
+const TEAMHEX = { 0: 0xd8d3c0, 1: 0x4f8fe0, 2: 0xd9483b };
+function markerSprite(text, color) {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+  const g = c.getContext('2d');
+  g.beginPath(); g.arc(64, 64, 52, 0, TAU); g.fillStyle = 'rgba(0,0,0,.55)'; g.fill(); g.lineWidth = 8; g.strokeStyle = color; g.stroke();
+  g.font = 'bold 58px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff'; g.fillText(text, 64, 68);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s2 = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true, sizeAttenuation: false }));
+  s2.scale.set(0.075, 0.075, 1); s2.renderOrder = 20;
+  return s2;
+}
+function setMarker(s2, text, color) { const n = markerSprite(text, color); s2.material.map.dispose(); s2.material.map = n.material.map; n.material.dispose(); }
+function flagMesh(color) {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 110, 8), M.metal); pole.position.y = 55; g.add(pole);
+  const cloth = new THREE.Mesh(new THREE.PlaneGeometry(42, 26, 8, 2), new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }));
+  cloth.position.set(21, 96, 0); g.add(cloth);
+  g.userData.cloth = cloth;
+  return g;
+}
+function ringMesh(r, color, opacity) {
+  const m = new THREE.Mesh(new THREE.RingGeometry(r - 8, r, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: opacity || 0.75, depthWrite: false, side: THREE.DoubleSide }));
+  m.rotation.x = -Math.PI / 2; m.position.y = 1.5;
+  return m;
+}
+function buildObjectives(mapId, mode) {
+  if (objGroup) { scene.remove(objGroup); disposeGroup(objGroup); }
+  objMapId = mapId; objModeId = mode;
+  objView.dom = []; objView.flags = []; objView.hq = null;
+  const map = S.MAPS[mapId];
+  const g = new THREE.Group(); objGroup = g;
+  if (mode === 'dom') {
+    map.dom.forEach((pt, i) => {
+      const f = flagMesh(TEAMHEX[0]); f.position.set(pt.x, 0, pt.y); g.add(f);
+      const ring = ringMesh(100, TEAMHEX[0]); ring.position.x = pt.x; ring.position.z = pt.y; g.add(ring);
+      const mk = markerSprite('ABC'[i], '#d8d3c0'); mk.position.set(pt.x, 150, pt.y); g.add(mk);
+      objView.dom.push({ flag: f, ring, mk, owner: -1 });
+    });
+  } else if (mode === 'ctf') {
+    for (const [ti, team] of [[1, 'allies'], [2, 'axis']]) {
+      const home = map.flags[team];
+      const base = ringMesh(46, TEAMHEX[ti], 0.9); base.position.x = home.x; base.position.z = home.y; g.add(base);
+      const f = flagMesh(TEAMHEX[ti]); f.position.set(home.x, 0, home.y); g.add(f);
+      const mk = markerSprite('⚑', ti === 1 ? '#4f8fe0' : '#d9483b'); mk.position.set(home.x, 150, home.y); g.add(mk);
+      objView.flags.push({ flag: f, mk, team });
+    }
+  } else if (mode === 'hq') {
+    const zone = new THREE.Mesh(new THREE.CylinderGeometry(140, 140, 70, 48, 1, true), new THREE.MeshBasicMaterial({ color: TEAMHEX[0], transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide }));
+    zone.position.y = 35; g.add(zone);
+    const ring = ringMesh(140, TEAMHEX[0], 0.85); g.add(ring);
+    const mk = markerSprite('HQ', '#d8d3c0'); g.add(mk);
+    objView.hq = { zone, ring, mk, holder: -1, idx: -1 };
+  }
+  scene.add(g);
+}
+function updateObjectives3D(now, players) {
+  if (!objGroup) return;
+  const ob = objState, map = S.MAPS[objMapId];
+  if (objModeId === 'dom' && ob && ob.p) {
+    ob.p.forEach(([owner], i) => {
+      const v = objView.dom[i]; if (!v) return;
+      if (v.owner !== owner) {
+        v.owner = owner;
+        v.flag.userData.cloth.material.color.setHex(TEAMHEX[owner]); v.ring.material.color.setHex(TEAMHEX[owner]);
+        setMarker(v.mk, 'ABC'[i], owner === 1 ? '#4f8fe0' : owner === 2 ? '#d9483b' : '#d8d3c0');
+      }
+    });
+  } else if (objModeId === 'ctf' && ob && ob.f) {
+    ob.f.forEach(([state, x, y, carrier], i) => {
+      const v = objView.flags[i]; if (!v) return;
+      let px = x, py = y, lift = 0;
+      if (state === 1) { const c = carrier === myId ? { x: pred.x, y: pred.y } : players.get(carrier); if (c) { px = c.x; py = c.y; lift = 30; } }
+      v.flag.position.set(px, lift, py);
+      v.flag.visible = !(state === 1 && carrier === myId);
+      v.mk.position.set(px, 150, py);
+    });
+  } else if (objModeId === 'hq' && ob && objView.hq) {
+    const v = objView.hq, z = map.hq[ob.z];
+    if (v.idx !== ob.z) { v.idx = ob.z; v.zone.position.x = v.ring.position.x = z.x; v.zone.position.z = v.ring.position.z = z.y; v.mk.position.set(z.x, 160, z.y); }
+    const h = ob.c ? 3 : ob.h;
+    if (v.holder !== h) {
+      v.holder = h; const col = h === 3 ? 0xf0c040 : TEAMHEX[h];
+      v.zone.material.color.setHex(col); v.ring.material.color.setHex(col);
+      setMarker(v.mk, 'HQ', h === 1 ? '#4f8fe0' : h === 2 ? '#d9483b' : h === 3 ? '#f0c040' : '#d8d3c0');
+    }
+    v.zone.material.opacity = 0.14 + Math.sin(now / 300) * 0.05;
+  }
+  for (const f of objView.dom.concat(objView.flags)) { const cl = f.flag.userData.cloth; cl.rotation.y = Math.sin(now / 400 + f.flag.position.x) * 0.25; }
+}
 
 // ============================================================ small mesh helpers
 function box(w, h, d, mat, x, y, z) { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); return m; }
@@ -1038,7 +1314,8 @@ function toggleScores(force) {
 function renderScores() {
   const teams = { allies: [], axis: [] };
   for (const p of roster.values()) teams[p.t].push(p);
-  let html = `<h2>Room ${esc(roomCode)} &mdash; Team Deathmatch (first to ${match.sl || S.SCORE_LIMIT})</h2><div class="sb">`;
+  const md = S.MODES[currentMode] || S.MODES.tdm;
+  let html = `<h2>${esc(md.name)} &mdash; ${esc((S.MAPS[objMapId] || S.MAPS.ruins).name)} &middot; first to ${match.sl || md.def} ${md.unit}</h2><div class="sb">`;
   for (const t of ['allies', 'axis']) {
     teams[t].sort((a, b) => b.k - a.k || a.d - b.d);
     html += `<div class="${t}"><h3>${t.toUpperCase()} ${match.sc[t === 'allies' ? 0 : 1]}</h3><table><tr><th>Soldier</th><th>K</th><th>D</th></tr>`;
@@ -1104,17 +1381,29 @@ if (!window.Sim) $('offline').classList.add('hidden');
 $('name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnQuick').click(); });
 
 // ---- create lobby
-const BOT_OPTS = [0, 1, 2, 3, 4, 5, 6, 7], SCORE_OPTS = [25, 50, 75, 100, 150], TIME_OPTS = [5, 10, 15, 20, 30];
-function fillSelect(el, opts, val, label) { el.innerHTML = opts.map((o) => `<option value="${o}"${o === val ? ' selected' : ''}>${label(o)}</option>`).join(''); }
+const BOT_OPTS = [0, 1, 2, 3, 4, 5, 6, 7], TIME_OPTS = [5, 10, 15, 20, 30];
+function fillSelect(el, opts, val, label) { el.innerHTML = opts.map((o) => `<option value="${o}"${String(o) === String(val) ? ' selected' : ''}>${label(o)}</option>`).join(''); }
 const botLabel = (o) => o === 0 ? 'No bots' : o + ' per team';
+const mapLabel = (id) => S.MAPS[id].name, modeLabel = (id) => S.MODES[id].name;
+const scoreLabel = (mode) => (o) => o + ' ' + S.MODES[mode].unit;
 fillSelect($('cBots'), BOT_OPTS, 4, botLabel);
-fillSelect($('cScore'), SCORE_OPTS, 50, (o) => o + ' kills');
+fillSelect($('cMap'), S.MAP_IDS, 'ruins', mapLabel);
+fillSelect($('cMode'), S.MODE_IDS, 'tdm', modeLabel);
+const fillScores = (el, mode, val) => fillSelect(el, S.MODES[mode].scores, val == null ? S.MODES[mode].def : val, scoreLabel(mode));
+fillScores($('cScore'), 'tdm');
 fillSelect($('cTime'), TIME_OPTS, 10, (o) => o + ' min');
+$('cMode').addEventListener('change', () => { fillScores($('cScore'), $('cMode').value); $('cModeDesc').textContent = S.MODES[$('cMode').value].desc; });
+$('cMap').addEventListener('change', () => buildWorld($('cMap').value));
+$('cModeDesc').textContent = S.MODES.tdm.desc;
+fillSelect($('offMap'), S.MAP_IDS, loadSaved('fl_offMap', 'ruins'), mapLabel);
+fillSelect($('offMode'), S.MODE_IDS, loadSaved('fl_offMode', 'tdm'), modeLabel);
+$('offMap').addEventListener('change', () => { save('fl_offMap', $('offMap').value); buildWorld($('offMap').value); });
+$('offMode').addEventListener('change', () => save('fl_offMode', $('offMode').value));
 $('createBack').addEventListener('click', () => showMenu(''));
 $('createGo').addEventListener('click', () => {
   phoneFullscreen();
   online(() => send({ t: 'create', name: playerName(), lobbyName: $('lobbyName').value.trim() || $('lobbyName').placeholder,
-    bots: +$('cBots').value, score: +$('cScore').value, time: +$('cTime').value, priv: $('cPriv').checked, loadout }));
+    bots: +$('cBots').value, score: +$('cScore').value, time: +$('cTime').value, priv: $('cPriv').checked, map: $('cMap').value, mode: $('cMode').value, loadout }));
 });
 
 // ---- lobby browser
@@ -1129,9 +1418,9 @@ function joinLobby(code) {
 function renderLobbyList(m) {
   const el = $('lobbyList');
   const rows = m.list.map((l) => `<div class="lobby-row"><div class="info"><div class="nm">${esc(l.name)}${l.state === 'lobby' ? '<span class="badge">Waiting</span>' : '<span class="badge live">In match</span>'}</div>
-    <div class="meta">Host ${esc(l.host)} &middot; ${l.players}/${l.max} players &middot; ${l.bots ? l.bots + ' bots/team' : 'no bots'} &middot; first to ${l.score} &middot; ${l.time} min &middot; code ${esc(l.code)}</div></div>
+    <div class="meta">${esc(S.MODES[l.mode] ? S.MODES[l.mode].name : '')} on ${esc(S.MAPS[l.map] ? S.MAPS[l.map].name : '')} &middot; Host ${esc(l.host)} &middot; ${l.players}/${l.max} players &middot; ${l.bots ? l.bots + ' bots/team' : 'no bots'} &middot; first to ${l.score} &middot; ${l.time} min &middot; code ${esc(l.code)}</div></div>
     <button data-code="${esc(l.code)}"${l.players >= l.max ? ' disabled' : ''}>JOIN</button></div>`);
-  rows.push(`<div class="lobby-row"><div class="info"><div class="nm">Quick Play</div><div class="meta">Public drop-in match &middot; ${m.quick} playing</div></div><button data-quick="1">PLAY</button></div>`);
+  rows.push(`<div class="lobby-row"><div class="info"><div class="nm">Quick Play</div><div class="meta">Public drop-in match, rotating maps and modes &middot; ${m.quick} playing</div></div><button data-quick="1">PLAY</button></div>`);
   el.innerHTML = (m.list.length ? '' : '<p class="tag">No open lobbies right now. Create one from the main menu!</p>') + rows.join('');
   for (const b of el.querySelectorAll('button[data-code]')) b.addEventListener('click', () => joinLobby(b.dataset.code));
   for (const b of el.querySelectorAll('button[data-quick]')) b.addEventListener('click', () => $('btnQuick').click());
@@ -1176,17 +1465,21 @@ function renderLobby() {
     if (!box.dataset.host || document.activeElement === null || !box.contains(document.activeElement)) {
       box.dataset.host = '1';
       box.innerHTML = `<div class="lo-label">Match settings (host)</div><div class="row">
+        <label>Map<select id="hMap"></select></label><label>Mode<select id="hMode"></select></label></div>
+        <p class="lo-desc">${esc(S.MODES[st.mode].desc)}</p><div class="row">
         <label>Bots per team<select id="hBots"></select></label><label>Score limit<select id="hScore"></select></label><label>Time limit<select id="hTime"></select></label></div>
         <label class="check"><input type="checkbox" id="hPriv"${L.priv ? ' checked' : ''}> Private lobby</label>`;
+      fillSelect($('hMap'), S.MAP_IDS, st.map, mapLabel);
+      fillSelect($('hMode'), S.MODE_IDS, st.mode, modeLabel);
       fillSelect($('hBots'), BOT_OPTS, st.bots, botLabel);
-      fillSelect($('hScore'), SCORE_OPTS, st.score, (o) => o + ' kills');
+      fillScores($('hScore'), st.mode, st.score);
       fillSelect($('hTime'), TIME_OPTS, st.time, (o) => o + ' min');
-      const push = () => send({ t: 'settings', s: { bots: +$('hBots').value, score: +$('hScore').value, time: +$('hTime').value, priv: $('hPriv').checked } });
-      for (const id of ['hBots', 'hScore', 'hTime', 'hPriv']) $(id).addEventListener('change', push);
+      const push = () => send({ t: 'settings', s: { map: $('hMap').value, mode: $('hMode').value, bots: +$('hBots').value, score: +$('hScore').value, time: +$('hTime').value, priv: $('hPriv').checked } });
+      for (const id of ['hMap', 'hMode', 'hBots', 'hScore', 'hTime', 'hPriv']) $(id).addEventListener('change', () => { push(); $(id).blur(); });
     }
   } else {
     box.dataset.host = '';
-    box.innerHTML = `<div class="lo-label">Match settings</div><div class="ro">${st.bots ? st.bots + ' bots per team' : 'No bots'} &middot; first to ${st.score} kills &middot; ${st.time} minute limit</div>`;
+    box.innerHTML = `<div class="lo-label">Match settings</div><div class="ro"><b>${esc(S.MODES[st.mode].name)}</b> on <b>${esc(S.MAPS[st.map].name)}</b> &middot; ${st.bots ? st.bots + ' bots per team' : 'No bots'} &middot; first to ${st.score} ${S.MODES[st.mode].unit} &middot; ${st.time} minute limit</div><p class="lo-desc">${esc(S.MODES[st.mode].desc)}</p>`;
   }
   const inLobby = L.state === 'lobby';
   $('lbReady').classList.toggle('hidden', !inLobby);
@@ -1262,6 +1555,7 @@ function frame(now) {
   soundsThisFrame = 0;
   $('rotate').classList.toggle('hidden', !(joined && isTouch && H > W));
 
+  updateSnow(dt, now);
   if (!joined || !$('lobbyScreen').classList.contains('hidden')) { renderAttract(now); return; }
   const players = interpPlayers(now);
   const st = myStats();
@@ -1502,6 +1796,7 @@ function frame(now) {
     }
   }
 
+  updateObjectives3D(now, players);
   renderer.clear();
   renderer.render(scene, camera);
   if (showVm) { renderer.clearDepth(); renderer.render(vmScene, vmCamera); }
@@ -1611,6 +1906,14 @@ function drawMinimap(players) {
     c.fillStyle = team === you.team ? '#5aa0ff' : '#ff5040';
     c.beginPath(); c.arc(p.x, p.y, 34, 0, TAU); c.fill();
   }
+  // objectives
+  const map = S.MAPS[objMapId], ob = objState, col = (k) => (k === 1 ? '#5aa0ff' : k === 2 ? '#ff5040' : '#e8e2c8');
+  if (map && ob) {
+    c.lineWidth = 14;
+    if (currentMode === 'dom' && ob.p) map.dom.forEach((pt, i) => { c.strokeStyle = col(ob.p[i][0]); c.beginPath(); c.arc(pt.x, pt.y, 100, 0, TAU); c.stroke(); });
+    if (currentMode === 'ctf' && ob.f) ob.f.forEach(([st, x, y], i) => { c.fillStyle = col(i + 1); c.fillRect(x - 40, y - 60, 70, 45); c.fillRect(x - 40, y - 60, 12, 120); });
+    if (currentMode === 'hq' && ob.z != null) { const z = map.hq[ob.z]; c.strokeStyle = ob.c ? '#f0c040' : col(ob.h); c.beginPath(); c.arc(z.x, z.y, 140, 0, TAU); c.stroke(); }
+  }
   c.restore();
   // player arrow (always up)
   c.fillStyle = '#fff';
@@ -1618,8 +1921,36 @@ function drawMinimap(players) {
   c.strokeStyle = 'rgba(255,240,200,.35)'; c.strokeRect(ox, oy, size, size);
 }
 
+function objectiveHud(now) {
+  const ob = objState; let html = '';
+  const tag = (k, txt, extra) => `<span class="ob ob${k}${extra || ''}">${txt}</span>`;
+  if (currentMode === 'dom' && ob && ob.p) {
+    const map = S.MAPS[objMapId];
+    html = ob.p.map(([owner, prog], i) => {
+      const pt = map.dom[i];
+      const here = you && you.alive && Math.hypot(pt.x - pred.x, pt.y - pred.y) < 100;
+      const bar = here ? `<i style="width:${Math.abs(prog)}%;background:${prog > 0 ? '#4f8fe0' : '#d9483b'}"></i>` : '';
+      return tag(owner, 'ABC'[i] + bar, here ? ' here' : '');
+    }).join('');
+  } else if (currentMode === 'ctf' && ob && ob.f) {
+    const st = (s2) => (s2 === 0 ? 'Home' : s2 === 1 ? 'Taken' : 'Dropped');
+    const mi = you.team === 'allies' ? 0 : 1, ei = 1 - mi;
+    html = tag(mi + 1, '⚑ Yours: ' + st(ob.f[mi][0])) + tag(ei + 1, '⚑ Enemy: ' + st(ob.f[ei][0]));
+    if (ob.f[ei][0] === 1 && ob.f[ei][3] === myId) html += tag(3, 'You have the flag! Run home');
+  } else if (currentMode === 'hq' && ob && ob.z != null) {
+    const sec = Math.ceil(ob.mv / 1000);
+    const who = ob.c ? 'Contested' : ob.h === 0 ? 'Unclaimed' : (ob.h === (you.team === 'allies' ? 1 : 2) ? 'Your team holds it' : 'Enemy holds it');
+    html = tag(ob.c ? 3 : ob.h, `HQ: ${who}`) + tag(0, `moves in ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`);
+  }
+  return html;
+}
+
 function updateHud(now) {
   if (!you) return;
+  const md = S.MODES[currentMode] || S.MODES.tdm;
+  setText('modeLabel', `${md.name} · ${(S.MAPS[objMapId] || S.MAPS.ruins).name} · first to ${match.sl || md.def}`);
+  const obh = objectiveHud(now);
+  if (hudCache.obh !== obh) { hudCache.obh = obh; $('objbar').innerHTML = obh; }
   setText('scA', String(match.sc[0])); setText('scX', String(match.sc[1]));
   const tl = Math.ceil(match.tl / 1000);
   setText('timer', Math.floor(tl / 60) + ':' + String(tl % 60).padStart(2, '0'));
@@ -1636,7 +1967,7 @@ function updateHud(now) {
   setText('ping', offlineMode ? 'OFFLINE' : Math.round(ping) + ' ms · ' + roomCode);
   if (isTouch) $('tRg').classList.toggle('hidden', !(you.rg > 0 && you.slot === 0));
   if (isTouch) $('tCrouch').classList.toggle('on', crouchOn);
-  const kf = killfeed.filter((k) => now - k.t < 6000).map((k) => `<div><span class="c-${teamOf(k.k)}">${esc(nameOf(k.k))}</span> <span class="w">[${esc(k.w)}${k.hs ? ' · HS' : ''}]</span> <span class="c-${teamOf(k.v)}">${esc(nameOf(k.v))}</span></div>`).join('');
+  const kf = killfeed.filter((k) => now - k.t < 6000).map((k) => k.notice ? `<div class="notice ${k.good === true ? 'good' : k.good === false ? 'bad' : ''}">${esc(k.notice)}</div>` : `<div><span class="c-${teamOf(k.k)}">${esc(nameOf(k.k))}</span> <span class="w">[${esc(k.w)}${k.hs ? ' · HS' : ''}]</span> <span class="c-${teamOf(k.v)}">${esc(nameOf(k.v))}</span></div>`).join('');
   if (hudCache.kf !== kf) { hudCache.kf = kf; $('killfeed').innerHTML = kf; }
   let c = '';
   if (match.st === 'ended') {
@@ -1653,4 +1984,5 @@ function updateHud(now) {
   if (hudCache.c !== c) { hudCache.c = c; $('center').innerHTML = c; }
 }
 
+buildWorld(loadSaved('fl_offMap', 'ruins'));
 requestAnimationFrame(frame);

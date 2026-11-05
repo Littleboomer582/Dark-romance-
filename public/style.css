@@ -111,6 +111,13 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
 #topbar .team { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,.5); padding: 4px 10px; border-radius: 6px; font-size: 22px; }
 #topbar .flag { font-size: 11px; letter-spacing: 2px; }
 #topbar .allies { border-bottom: 3px solid var(--allies); } #topbar .axis { border-bottom: 3px solid var(--axis); }
+#modeLabel { position: absolute; top: max(52px, calc(env(safe-area-inset-top) + 46px)); left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); letter-spacing: 1px; white-space: nowrap; }
+#objbar { position: absolute; top: max(70px, calc(env(safe-area-inset-top) + 64px)); left: 50%; transform: translateX(-50%); display: flex; gap: 6px; white-space: nowrap; }
+#objbar .ob { position: relative; overflow: hidden; display: inline-block; min-width: 30px; text-align: center; padding: 4px 9px; border-radius: 6px; background: rgba(0,0,0,.55); border: 2px solid #d8d3c0; font-size: 14px; }
+#objbar .ob1 { border-color: #4f8fe0; color: #bcd6ff; } #objbar .ob2 { border-color: #d9483b; color: #ffc0b8; } #objbar .ob3 { border-color: #f0c040; color: #ffe8a0; }
+#objbar .ob.here { transform: scale(1.15); }
+#objbar .ob i { position: absolute; left: 0; bottom: 0; height: 4px; }
+#killfeed .notice { color: #ffe2a4; } #killfeed .notice.good { color: #a8e08a; } #killfeed .notice.bad { color: #ff9a8a; }
 #timer { font-size: 18px; background: rgba(0,0,0,.5); padding: 4px 10px; border-radius: 6px; min-width: 64px; text-align: center; }
 #killfeed { position: absolute; top: max(10px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 13px; max-width: 40vw; }
 #killfeed div { background: rgba(0,0,0,.55); padding: 3px 8px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }

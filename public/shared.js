@@ -153,52 +153,117 @@
 
   // -------------------------------------------------------------------- map
   // k: wall | crate | sand
-  const HEIGHTS = { wall: 130, crate: 48, sand: 34 };
-  const leftSide = [
-    { x: 300, y: 260, w: 50, h: 280, k: 'wall' },
-    { x: 300, y: 1060, w: 50, h: 280, k: 'wall' },
-    { x: 470, y: 520, w: 130, h: 34, k: 'sand' },
-    { x: 470, y: 1046, w: 130, h: 34, k: 'sand' },
-    { x: 560, y: 760, w: 80, h: 80, k: 'crate' },
-    { x: 620, y: 300, w: 70, h: 70, k: 'crate' },
-    { x: 620, y: 1230, w: 70, h: 70, k: 'crate' },
-    { x: 850, y: 140, w: 300, h: 30, k: 'wall' },
-    { x: 850, y: 140, w: 30, h: 240, k: 'wall' },
-    { x: 850, y: 1430, w: 300, h: 30, k: 'wall' },
-    { x: 850, y: 1220, w: 30, h: 240, k: 'wall' },
-    { x: 960, y: 580, w: 40, h: 170, k: 'wall' },
-    { x: 960, y: 850, w: 40, h: 170, k: 'wall' },
-    { x: 760, y: 470, w: 34, h: 120, k: 'sand' },
-    { x: 760, y: 1010, w: 34, h: 120, k: 'sand' },
-    { x: 150, y: 700, w: 60, h: 60, k: 'crate' },
-    { x: 150, y: 840, w: 60, h: 60, k: 'crate' },
-  ];
-  const center = [
-    { x: 1120, y: 480, w: 160, h: 30, k: 'wall' },
-    { x: 1120, y: 1090, w: 160, h: 30, k: 'wall' },
-    { x: 1165, y: 715, w: 70, h: 170, k: 'wall' },
-    { x: 1150, y: 90, w: 100, h: 110, k: 'crate' },
-    { x: 1150, y: 1400, w: 100, h: 110, k: 'crate' },
-    { x: 1080, y: 300, w: 34, h: 100, k: 'sand' },
-    { x: 1286, y: 300, w: 34, h: 100, k: 'sand' },
-    { x: 1080, y: 1200, w: 34, h: 100, k: 'sand' },
-    { x: 1286, y: 1200, w: 34, h: 100, k: 'sand' },
-  ];
-  const WALLS = leftSide
-    .concat(leftSide.map((r) => ({ x: MAP_W - r.x - r.w, y: r.y, w: r.w, h: r.h, k: r.k })))
-    .concat(center);
-  for (const w of WALLS) w.ht = HEIGHTS[w.k];
+  // k: wall | crate | sand | house | tree | log | rock | bunker | fence
+  const HEIGHTS = { wall: 130, crate: 48, sand: 34, house: 170, tree: 320, log: 30, rock: 64, bunker: 95, fence: 42 };
+  const mirror = (list) => list.concat(list.map((r) => Object.assign({}, r, { x: MAP_W - r.x - r.w })));
+  // a building made of wall segments with doorways ('n','s','e','w')
+  function house(x, y, w, h, doors, t, k) {
+    t = t || 16; k = k || 'house'; doors = doors || '';
+    const D = 96, out = [];
+    const hz = (yy, door) => { if (!door) out.push({ x, y: yy, w, h: t, k }); else { const m = x + w / 2; out.push({ x, y: yy, w: m - D / 2 - x, h: t, k }, { x: m + D / 2, y: yy, w: x + w - m - D / 2, h: t, k }); } };
+    const vt = (xx, door) => { if (!door) out.push({ x: xx, y: y + t, w: t, h: h - 2 * t, k }); else { const m = y + h / 2; out.push({ x: xx, y: y + t, w: t, h: m - D / 2 - y - t, k }, { x: xx, y: m + D / 2, w: t, h: y + h - t - m - D / 2, k }); } };
+    hz(y, doors.includes('n')); hz(y + h - t, doors.includes('s'));
+    vt(x, doors.includes('w')); vt(x + w - t, doors.includes('e'));
+    return out;
+  }
+  function scatter(seed, n, kind, size, area, avoid) {
+    let sd = seed; const r = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+    const out = [];
+    for (let tries = 0; out.length < n && tries < n * 40; tries++) {
+      const x = area[0] + r() * (area[2] - area[0]), y = area[1] + r() * (area[3] - area[1]);
+      const c = { x: Math.round(x), y: Math.round(y), w: size, h: size, k: kind };
+      const pad = 46;
+      if (avoid.concat(out).some((o) => c.x < o.x + o.w + pad && c.x + c.w + pad > o.x && c.y < o.y + o.h + pad && c.y + c.h + pad > o.y)) continue;
+      out.push(c);
+    }
+    return out;
+  }
 
+  // ---- Ruins (the original map)
+  const ruinsLeft = [
+    { x: 300, y: 260, w: 50, h: 280, k: 'wall' }, { x: 300, y: 1060, w: 50, h: 280, k: 'wall' },
+    { x: 470, y: 520, w: 130, h: 34, k: 'sand' }, { x: 470, y: 1046, w: 130, h: 34, k: 'sand' },
+    { x: 560, y: 760, w: 80, h: 80, k: 'crate' }, { x: 620, y: 300, w: 70, h: 70, k: 'crate' }, { x: 620, y: 1230, w: 70, h: 70, k: 'crate' },
+    { x: 850, y: 140, w: 300, h: 30, k: 'wall' }, { x: 850, y: 140, w: 30, h: 240, k: 'wall' },
+    { x: 850, y: 1430, w: 300, h: 30, k: 'wall' }, { x: 850, y: 1220, w: 30, h: 240, k: 'wall' },
+    { x: 960, y: 580, w: 40, h: 170, k: 'wall' }, { x: 960, y: 850, w: 40, h: 170, k: 'wall' },
+    { x: 760, y: 470, w: 34, h: 120, k: 'sand' }, { x: 760, y: 1010, w: 34, h: 120, k: 'sand' },
+    { x: 150, y: 700, w: 60, h: 60, k: 'crate' }, { x: 150, y: 840, w: 60, h: 60, k: 'crate' },
+  ];
+  const ruinsCenter = [
+    { x: 1120, y: 480, w: 160, h: 30, k: 'wall' }, { x: 1120, y: 1090, w: 160, h: 30, k: 'wall' }, { x: 1165, y: 715, w: 70, h: 170, k: 'wall' },
+    { x: 1150, y: 90, w: 100, h: 110, k: 'crate' }, { x: 1150, y: 1400, w: 100, h: 110, k: 'crate' },
+    { x: 1080, y: 300, w: 34, h: 100, k: 'sand' }, { x: 1286, y: 300, w: 34, h: 100, k: 'sand' },
+    { x: 1080, y: 1200, w: 34, h: 100, k: 'sand' }, { x: 1286, y: 1200, w: 34, h: 100, k: 'sand' },
+  ];
+
+  // ---- Village: farm houses, a barn and a fountain square
+  const villageLeft = [].concat(
+    house(330, 170, 280, 210, 'se'), house(330, 1220, 280, 210, 'ne'), house(760, 560, 240, 480, 'we'),
+    [
+      { x: 690, y: 300, w: 60, h: 60, k: 'crate' }, { x: 690, y: 1240, w: 60, h: 60, k: 'crate' },
+      { x: 480, y: 640, w: 24, h: 120, k: 'fence' }, { x: 480, y: 840, w: 24, h: 120, k: 'fence' },
+      { x: 150, y: 720, w: 70, h: 40, k: 'crate' }, { x: 600, y: 470, w: 110, h: 30, k: 'sand' }, { x: 600, y: 1100, w: 110, h: 30, k: 'sand' },
+      { x: 860, y: 230, w: 120, h: 26, k: 'fence' }, { x: 860, y: 1350, w: 120, h: 26, k: 'fence' },
+    ]);
+  const villageCenter = [].concat(house(1060, 80, 280, 200, 's'), house(1060, 1320, 280, 200, 'n'), [
+    { x: 1150, y: 750, w: 100, h: 100, k: 'rock' },
+    { x: 1060, y: 590, w: 110, h: 30, k: 'sand' }, { x: 1230, y: 590, w: 110, h: 30, k: 'sand' },
+    { x: 1060, y: 980, w: 110, h: 30, k: 'sand' }, { x: 1230, y: 980, w: 110, h: 30, k: 'sand' },
+    { x: 1170, y: 420, w: 60, h: 60, k: 'crate' }, { x: 1170, y: 1120, w: 60, h: 60, k: 'crate' },
+  ]);
+
+  // ---- Winter Forest: pines, log piles, foxholes and a ruined cabin
+  const winterCenter = house(1080, 680, 240, 240, 'nswe', 18, 'wall');
+  const winterBase = [
+    { x: 420, y: 520, w: 120, h: 30, k: 'log' }, { x: 420, y: 1050, w: 120, h: 30, k: 'log' },
+    { x: 640, y: 760, w: 30, h: 90, k: 'sand' }, { x: 670, y: 735, w: 60, h: 28, k: 'sand' }, { x: 670, y: 847, w: 60, h: 28, k: 'sand' },
+    { x: 880, y: 300, w: 90, h: 70, k: 'rock' }, { x: 880, y: 1230, w: 90, h: 70, k: 'rock' },
+    { x: 980, y: 520, w: 110, h: 30, k: 'log' }, { x: 980, y: 1050, w: 110, h: 30, k: 'log' },
+  ];
+  const winterLeft = winterBase.concat(scatter(91, 26, 'tree', 24, [300, 60, 1040, 1520], winterBase.concat(winterCenter, [{ x: 0, y: 0, w: 300, h: 1600 }])));
+  const winterMid = scatter(17, 4, 'tree', 24, [1100, 60, 1176, 1520], winterCenter.concat(winterLeft));
+
+  // ---- Pacific Island: concrete bunkers, palms, sandbag lines
+  const islandLeft0 = [].concat(house(420, 290, 210, 170, 'e', 22, 'bunker'), house(420, 1140, 210, 170, 'e', 22, 'bunker'), [
+    { x: 330, y: 700, w: 30, h: 200, k: 'sand' }, { x: 700, y: 620, w: 140, h: 30, k: 'sand' }, { x: 700, y: 950, w: 140, h: 30, k: 'sand' },
+    { x: 860, y: 760, w: 90, h: 80, k: 'rock' }, { x: 128, y: 765, w: 60, h: 60, k: 'crate' }, { x: 690, y: 160, w: 60, h: 60, k: 'crate' }, { x: 690, y: 1380, w: 60, h: 60, k: 'crate' },
+  ]);
+  const islandCenter = [].concat(house(1100, 690, 200, 220, 'ns', 22, 'bunker'), [
+    { x: 1150, y: 300, w: 100, h: 80, k: 'rock' }, { x: 1150, y: 1220, w: 100, h: 80, k: 'rock' },
+  ]);
+  const islandLeft = islandLeft0.concat(scatter(33, 13, 'tree', 22, [320, 60, 1060, 1520], islandLeft0.concat(islandCenter, [{ x: 0, y: 0, w: 300, h: 1600 }])));
+
+  const MAPS = {
+    ruins: { name: 'Ruins', desc: 'Bombed-out town ruins', theme: 'ruins', walls: mirror(ruinsLeft).concat(ruinsCenter) },
+    village: { name: 'Village', desc: 'French farm village', theme: 'village', walls: mirror(villageLeft).concat(villageCenter) },
+    winter: { name: 'Winter Forest', desc: 'Snowy pine forest', theme: 'winter', walls: mirror(winterLeft).concat(winterCenter, mirror(winterMid)) },
+    island: { name: 'Pacific Island', desc: 'Beach bunkers and palms', theme: 'island', walls: mirror(islandLeft).concat(islandCenter) },
+  };
+  const MAP_IDS = Object.keys(MAPS);
+
+  const MODES = {
+    tdm: { name: 'Team Deathmatch', short: 'TDM', desc: 'Most kills wins.', scores: [25, 50, 75, 100, 150], def: 50, unit: 'kills' },
+    dom: { name: 'Domination', short: 'DOM', desc: 'Capture and hold flags A, B and C. Each flag held scores points.', scores: [100, 150, 200, 300], def: 200, unit: 'points' },
+    ctf: { name: 'Capture the Flag', short: 'CTF', desc: "Steal the enemy flag and bring it to your base while your own flag is home.", scores: [1, 3, 5, 7], def: 3, unit: 'captures' },
+    hq: { name: 'Headquarters', short: 'HQ', desc: 'Hold the active HQ zone to score. It moves every minute.', scores: [100, 150, 200, 300], def: 200, unit: 'points' },
+  };
+  const MODE_IDS = Object.keys(MODES);
+
+  // the active map's walls and spawns (the same array objects are refilled by useMap)
+  const WALLS = [];
   const SPAWNS = { allies: [], axis: [] };
-  for (const y of [180, 420, 640, 960, 1180, 1420]) {
-    SPAWNS.allies.push({ x: 90, y });
-    SPAWNS.axis.push({ x: MAP_W - 90, y });
+  for (const y of [180, 420, 640, 960, 1180, 1420]) { SPAWNS.allies.push({ x: 90, y }); SPAWNS.axis.push({ x: MAP_W - 90, y }); }
+  for (const y of [300, 800, 1300]) { SPAWNS.allies.push({ x: 230, y }); SPAWNS.axis.push({ x: MAP_W - 230, y }); }
+  let currentMap = null;
+  function useMap(id) {
+    if (!MAPS[id]) id = 'ruins';
+    if (currentMap === id) return MAPS[id];
+    currentMap = id;
+    WALLS.length = 0;
+    for (const w of MAPS[id].walls) WALLS.push(w);
+    return MAPS[id];
   }
-  for (const y of [300, 800, 1300]) {
-    SPAWNS.allies.push({ x: 230, y });
-    SPAWNS.axis.push({ x: MAP_W - 230, y });
-  }
-
   // ---------------------------------------------------------------- physics
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
@@ -338,9 +403,22 @@
   function eyeHeight(crouch) { return crouch ? EYE.crouch : EYE.stand; }
   function bodyHeight(crouch) { return crouch ? BODY.crouch : BODY.stand; }
 
+  // ---- objective positions (nudged out of any wall they land in)
+  function freeSpot(x, y) { const r = resolveCircle(x, y, 40); return { x: Math.round(r[0]), y: Math.round(r[1]) }; }
+  for (const id of MAP_IDS) {
+    useMap(id);
+    const m = MAPS[id];
+    for (const w of m.walls) w.ht = HEIGHTS[w.k];
+    const midY = MAP_H / 2;
+    m.dom = [freeSpot(560, midY), freeSpot(MAP_W / 2, id === 'ruins' ? 610 : id === 'village' ? 660 : id === 'island' ? 600 : 520), freeSpot(MAP_W - 560, midY)];
+    m.flags = { allies: freeSpot(165, midY), axis: freeSpot(MAP_W - 165, midY) };
+    m.hq = [freeSpot(MAP_W / 2, id === 'winter' ? 800 : 560), freeSpot(720, 380), freeSpot(MAP_W - 720, 1220), freeSpot(720, 1220), freeSpot(MAP_W - 720, 380)];
+  }
+  currentMap = null; useMap('ruins');
+
   const api = {
     MAP_W, MAP_H, PLAYER_R, BASE_SPEED, MAX_HP, SCORE_LIMIT, MATCH_MS, MAX_ATTACHMENTS, MAX_SEC_ATTACHMENTS,
-    HEAD_ZONE, HEADSHOT_MULT, WEAPONS, ATTACHMENTS, WALLS, SPAWNS,
+    HEAD_ZONE, HEADSHOT_MULT, WEAPONS, ATTACHMENTS, WALLS, SPAWNS, MAPS, MAP_IDS, MODES, MODE_IDS, HEIGHTS, useMap,
     computeStats, sanitizeLoadout, cleanAtts, resolveCircle, moveCircle, rayWalls, rayWorld, rayCylinder, rayCircle,
     hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, clamp,
   };

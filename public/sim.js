@@ -7,22 +7,36 @@
 const SEND_EVERY = 2; // broadcast at 30 Hz
 const RESPAWN_MS = 3500;
 const MAX_PLAYERS_PER_ROOM = 16;
+const DOM_RADIUS = 100, FLAG_RADIUS = 38, FLAG_RETURN_MS = 15000, HQ_RADIUS = 140, HQ_MOVE_MS = 60000;
+// Quick Play cycles through every map and mode
+const ROTATION = [['ruins', 'tdm'], ['village', 'dom'], ['winter', 'ctf'], ['island', 'hq'], ['village', 'tdm'], ['winter', 'dom'], ['island', 'ctf'], ['ruins', 'hq'], ['winter', 'tdm'], ['island', 'dom'], ['ruins', 'ctf'], ['village', 'hq']];
 
 // ------------------------------------------------------------ bot pathing
 const CELL = 40;
 const GW = Math.ceil(S.MAP_W / CELL), GH = Math.ceil(S.MAP_H / CELL);
-const blocked = new Uint8Array(GW * GH);
-for (let gy = 0; gy < GH; gy++) {
-  for (let gx = 0; gx < GW; gx++) {
-    const cx = gx * CELL + CELL / 2, cy = gy * CELL + CELL / 2;
-    const r = S.PLAYER_R + 4;
-    let b = cx < r || cy < r || cx > S.MAP_W - r || cy > S.MAP_H - r;
-    for (const w of S.WALLS) {
-      const px = S.clamp(cx, w.x, w.x + w.w), py = S.clamp(cy, w.y, w.y + w.h);
-      if ((cx - px) ** 2 + (cy - py) ** 2 < r * r) { b = true; break; }
+// one walkability grid per map, built on first use
+const grids = {};
+let blocked = null;
+function buildGrid() {
+  const grid = new Uint8Array(GW * GH);
+  for (let gy = 0; gy < GH; gy++) {
+    for (let gx = 0; gx < GW; gx++) {
+      const cx = gx * CELL + CELL / 2, cy = gy * CELL + CELL / 2;
+      const r = S.PLAYER_R + 4;
+      let b = cx < r || cy < r || cx > S.MAP_W - r || cy > S.MAP_H - r;
+      for (const w of S.WALLS) {
+        const px = S.clamp(cx, w.x, w.x + w.w), py = S.clamp(cy, w.y, w.y + w.h);
+        if ((cx - px) ** 2 + (cy - py) ** 2 < r * r) { b = true; break; }
+      }
+      grid[gy * GW + gx] = b ? 1 : 0;
     }
-    blocked[gy * GW + gx] = b ? 1 : 0;
   }
+  return grid;
+}
+// Point the shared physics and the bot pathing at a room's map before working on that room.
+function useRoom(room) {
+  S.useMap(room.map);
+  blocked = grids[room.map] || (grids[room.map] = buildGrid());
 }
 function cellOf(x, y) { return [S.clamp(Math.floor(x / CELL), 0, GW - 1), S.clamp(Math.floor(y / CELL), 0, GH - 1)]; }
 function nearestOpen(gx, gy) {
@@ -46,7 +60,7 @@ function findPath(x0, y0, x1, y1) {
   const h = (i) => { const x = i % GW, y = (i / GW) | 0; const dx = Math.abs(x - tx), dy = Math.abs(y - ty); return Math.max(dx, dy) + 0.414 * Math.min(dx, dy); };
   g[start] = 0; push(h(start), start);
   let iter = 0;
-  while (heap.length && iter++ < 4000) {
+  while (heap.length && iter++ < 2500) {
     const [, cur] = pop();
     if (cur === goal) break;
     if (closed[cur]) continue;
@@ -88,7 +102,6 @@ function makeGun(id, atts) {
   return { id, stats, ammo: stats.mag, reserve: stats.reserve };
 }
 
-const SCORE_OPTIONS = [25, 50, 75, 100, 150];
 const TIME_OPTIONS = [5, 10, 15, 20, 30];
 function cleanText(v, max, def) { return String(v == null ? '' : v).replace(/[^\w .\-'!?#&]/g, '').trim().slice(0, max) || def; }
 
@@ -102,6 +115,9 @@ class Room {
     this.tickCount = 0;
     this.lobby = !!opts.lobby;
     this.hostId = 0;
+    this.rotate = !!opts.rotate;
+    this.rotIndex = Math.floor(Math.random() * ROTATION.length);
+    if (this.rotate) { opts.map = ROTATION[this.rotIndex][0]; opts.mode = ROTATION[this.rotIndex][1]; }
     this.applySettings(opts);
     this.name = cleanText(opts.name, 24, this.lobby ? 'Lobby ' + code : 'Quick Play');
     this.score = { allies: 0, axis: 0 };
@@ -111,8 +127,15 @@ class Room {
   applySettings(o) {
     if (o.bots != null) this.botsPerTeam = S.clamp(o.bots | 0, 0, 7);
     if (this.botsPerTeam == null) this.botsPerTeam = 4;
-    if (SCORE_OPTIONS.includes(+o.score)) this.scoreLimit = +o.score;
-    if (!this.scoreLimit) this.scoreLimit = S.SCORE_LIMIT;
+    if (this.state !== 'playing') { // map and mode only change between matches
+      if (o.map && S.MAPS[o.map]) this.map = o.map;
+      if (o.mode && S.MODES[o.mode] && o.mode !== this.mode) { this.mode = o.mode; this.scoreLimit = S.MODES[o.mode].def; }
+    }
+    if (!this.map) this.map = 'ruins';
+    if (!this.mode) this.mode = 'tdm';
+    const MD = S.MODES[this.mode];
+    if (MD.scores.includes(+o.score)) this.scoreLimit = +o.score;
+    if (!MD.scores.includes(this.scoreLimit)) this.scoreLimit = MD.def;
     if (TIME_OPTIONS.includes(+o.time)) this.matchMs = +o.time * 60000;
     if (!this.matchMs) this.matchMs = S.MATCH_MS;
     if (o.priv != null) this.priv = !!o.priv;
@@ -121,10 +144,12 @@ class Room {
 
   reset() {
     const now = Date.now();
+    useRoom(this);
     this.score = { allies: 0, axis: 0 };
     this.state = 'playing';
     this.endsAt = now + this.matchMs;
     this.nades = [];
+    this.initObjectives(now);
     for (const p of this.players.values()) {
       p.kills = 0; p.deaths = 0;
       this.spawn(p, now);
@@ -147,12 +172,86 @@ class Room {
 
   info() {
     return { code: this.code, name: this.name, host: (this.players.get(this.hostId) || {}).name || '', players: this.humans().length,
-      max: MAX_PLAYERS_PER_ROOM, bots: this.botsPerTeam, state: this.state, score: this.scoreLimit, time: this.matchMs / 60000 };
+      max: MAX_PLAYERS_PER_ROOM, bots: this.botsPerTeam, state: this.state, score: this.scoreLimit, time: this.matchMs / 60000, map: this.map, mode: this.mode };
+  }
+
+  // ------------------------------------------------------------ objectives
+  initObjectives(now) {
+    const m = S.MAPS[this.map];
+    this.obj = null;
+    if (this.mode === 'dom') this.obj = { pts: m.dom.map((q) => ({ x: q.x, y: q.y, owner: null, prog: 0 })), nextScore: now + 1000 };
+    else if (this.mode === 'ctf') {
+      const flag = (team) => ({ team, home: m.flags[team], x: m.flags[team].x, y: m.flags[team].y, state: 'home', carrier: 0, dropAt: 0 });
+      this.obj = { flags: { allies: flag('allies'), axis: flag('axis') } };
+    } else if (this.mode === 'hq') this.obj = { zones: m.hq, idx: 0, moveAt: now + HQ_MOVE_MS, nextScore: now + 1000, holder: null, contested: false };
+  }
+
+  teamsNear(x, y, r) {
+    const n = { allies: 0, axis: 0 };
+    for (const p of this.players.values()) if (p.alive && Math.hypot(p.x - x, p.y - y) < r) n[p.team]++;
+    return n;
+  }
+
+  updateObjectives(now, dt) {
+    const o = this.obj;
+    if (!o) return;
+    if (this.mode === 'dom') {
+      for (let i = 0; i < o.pts.length; i++) {
+        const pt = o.pts[i], n = this.teamsNear(pt.x, pt.y, DOM_RADIUS);
+        const rate = 0.22 * dt;
+        if (n.allies && !n.axis) pt.prog = Math.min(1, pt.prog + rate * Math.min(3, n.allies));
+        else if (n.axis && !n.allies) pt.prog = Math.max(-1, pt.prog - rate * Math.min(3, n.axis));
+        else if (!n.allies && !n.axis) { const home = pt.owner === 'allies' ? 1 : pt.owner === 'axis' ? -1 : 0; pt.prog += S.clamp(home - pt.prog, -rate * 0.5, rate * 0.5); }
+        if (pt.owner === 'allies' && pt.prog <= 0) { pt.owner = null; this.events.push({ e: 'obj', k: 'neutral', i }); }
+        if (pt.owner === 'axis' && pt.prog >= 0) { pt.owner = null; this.events.push({ e: 'obj', k: 'neutral', i }); }
+        if (!pt.owner && pt.prog >= 1) { pt.owner = 'allies'; this.events.push({ e: 'obj', k: 'cap', i, t: 'allies' }); }
+        if (!pt.owner && pt.prog <= -1) { pt.owner = 'axis'; this.events.push({ e: 'obj', k: 'cap', i, t: 'axis' }); }
+      }
+      if (now >= o.nextScore) { o.nextScore += 4000; for (const pt of o.pts) if (pt.owner) this.score[pt.owner]++; }
+    } else if (this.mode === 'ctf') {
+      for (const team of ['allies', 'axis']) {
+        const f = o.flags[team], enemy = team === 'allies' ? 'axis' : 'allies';
+        if (f.state === 'carried') {
+          const c = this.players.get(f.carrier);
+          if (!c || !c.alive || c.team === team) { f.state = 'dropped'; f.dropAt = now; f.carrier = 0; this.events.push({ e: 'obj', k: 'drop', t: team }); continue; }
+          f.x = c.x; f.y = c.y;
+          const myFlag = o.flags[enemy];
+          if (myFlag.state === 'home' && Math.hypot(c.x - myFlag.home.x, c.y - myFlag.home.y) < FLAG_RADIUS + 14) {
+            this.score[enemy]++;
+            this.events.push({ e: 'obj', k: 'cap', t: team, i: c.id });
+            f.state = 'home'; f.x = f.home.x; f.y = f.home.y; f.carrier = 0;
+          }
+          continue;
+        }
+        if (f.state === 'dropped' && now - f.dropAt > FLAG_RETURN_MS) { f.state = 'home'; f.x = f.home.x; f.y = f.home.y; this.events.push({ e: 'obj', k: 'return', t: team }); continue; }
+        for (const p of this.players.values()) {
+          if (!p.alive || Math.hypot(p.x - f.x, p.y - f.y) > FLAG_RADIUS) continue;
+          if (p.team !== team) { f.state = 'carried'; f.carrier = p.id; this.events.push({ e: 'obj', k: 'take', t: team, i: p.id }); break; }
+          if (f.state === 'dropped') { f.state = 'home'; f.x = f.home.x; f.y = f.home.y; this.events.push({ e: 'obj', k: 'return', t: team, i: p.id }); break; }
+        }
+      }
+    } else if (this.mode === 'hq') {
+      if (now >= o.moveAt) { o.idx = (o.idx + 1) % o.zones.length; o.moveAt = now + HQ_MOVE_MS; this.events.push({ e: 'obj', k: 'move', i: o.idx }); }
+      const z = o.zones[o.idx], n = this.teamsNear(z.x, z.y, HQ_RADIUS);
+      o.contested = !!(n.allies && n.axis);
+      o.holder = o.contested ? null : n.allies ? 'allies' : n.axis ? 'axis' : null;
+      if (now >= o.nextScore) { o.nextScore += 1000; if (o.holder) this.score[o.holder] += 1; }
+    }
+  }
+
+  objState(now) {
+    const o = this.obj;
+    if (!o) return null;
+    const code = (t) => (t === 'allies' ? 1 : t === 'axis' ? 2 : 0);
+    if (this.mode === 'dom') return { p: o.pts.map((pt) => [code(pt.owner), Math.round(pt.prog * 100)]) };
+    if (this.mode === 'ctf') return { f: ['allies', 'axis'].map((t) => { const f = o.flags[t]; return [f.state === 'home' ? 0 : f.state === 'carried' ? 1 : 2, f.x | 0, f.y | 0, f.carrier || 0]; }) };
+    if (this.mode === 'hq') return { z: o.idx, mv: Math.max(0, o.moveAt - now), h: code(o.holder), c: o.contested ? 1 : 0 };
+    return null;
   }
 
   sendLobby() {
     const msg = JSON.stringify({ t: 'lobby', code: this.code, name: this.name, host: this.hostId, state: this.state, lobby: this.lobby, priv: !!this.priv,
-      settings: { bots: this.botsPerTeam, score: this.scoreLimit, time: this.matchMs / 60000 },
+      settings: { bots: this.botsPerTeam, score: this.scoreLimit, time: this.matchMs / 60000, map: this.map, mode: this.mode },
       players: [...this.players.values()].map((p) => ({ i: p.id, n: p.name, t: p.team, b: p.bot ? 1 : 0, r: p.ready ? 1 : 0 })) });
     for (const p of this.players.values()) if (!p.bot && p.ws && p.ws.readyState === 1) p.ws.send(msg);
   }
@@ -260,7 +359,7 @@ class Room {
       victim.killerPos = [attacker.x | 0, attacker.y | 0];
       if (attacker !== victim && attacker.team !== victim.team) {
         attacker.kills++;
-        if (this.state === 'playing') this.score[attacker.team]++;
+        if (this.state === 'playing' && this.mode === 'tdm') this.score[attacker.team]++;
       }
       this.events.push({ e: 'k', k: attacker.id, v: victim.id, w: weapon, hs: hs ? 1 : 0 });
     }
@@ -475,7 +574,13 @@ class Room {
     if (this.state === 'lobby') {
       // waiting for the host to start: nothing to simulate
     } else if (this.state === 'ended') {
-      if (now >= this.restartAt) { if (this.lobby) this.backToLobby(); else this.reset(); }
+      if (now >= this.restartAt) {
+        if (this.lobby) this.backToLobby();
+        else {
+          if (this.rotate) { this.rotIndex = (this.rotIndex + 1) % ROTATION.length; this.state = 'lobby'; this.applySettings({ map: ROTATION[this.rotIndex][0], mode: ROTATION[this.rotIndex][1] }); }
+          this.reset();
+        }
+      }
     } else {
       for (const p of this.players.values()) {
         if (p.bot) { p.moveBudget = 1; botThink(this, p, now, dt); }
@@ -483,6 +588,7 @@ class Room {
         this.updatePlayer(p, now, dt);
       }
       this.updateNades(dt, now);
+      this.updateObjectives(now, dt);
       if (this.score.allies >= this.scoreLimit || this.score.axis >= this.scoreLimit || now >= this.endsAt) {
         this.state = 'ended';
         this.restartAt = now + (this.lobby ? 10000 : 12000);
@@ -502,8 +608,8 @@ class Room {
       ps.push({ i: p.id, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, a: +p.ang.toFixed(3), q: +(p.pitch || 0).toFixed(2), h: Math.ceil(p.hp), f: flags, w: this.gun(p).id + ':' + this.gun(p).stats.atts.join(',') });
     }
     const base = {
-      t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, n.kind === 'rg' ? 1 : 0]), sc: [this.score.allies, this.score.axis],
-      tl: Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
+      t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, n.kind === 'rg' ? 1 : 0]), sc: [Math.floor(this.score.allies), Math.floor(this.score.axis)],
+      tl: Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, mp: this.map, md: this.mode, ob: this.objState(now), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
     };
     this.events = [];
     for (const p of this.players.values()) {
@@ -546,6 +652,27 @@ function createBot(team, taken) {
 }
 
 // ---------------------------------------------------------------- bot AI
+// Where a bot should head when it has nobody to shoot (null = hunt the nearest enemy).
+function botGoal(room, p) {
+  const o = room.obj;
+  if (!o) return null;
+  if (room.mode === 'dom') {
+    let best = null, bd = Infinity;
+    for (const pt of o.pts) { if (pt.owner === p.team) continue; const d = Math.hypot(pt.x - p.x, pt.y - p.y) + (p.id % 3) * 150; if (d < bd) { bd = d; best = pt; } }
+    return best || o.pts[p.id % o.pts.length];
+  }
+  if (room.mode === 'ctf') {
+    const enemy = p.team === 'allies' ? 'axis' : 'allies';
+    const mine = o.flags[p.team], theirs = o.flags[enemy];
+    if (theirs.carrier === p.id) return mine.home;                      // bring it home
+    if (mine.state !== 'home') return { x: mine.x, y: mine.y };          // chase / return our flag
+    if (p.id % 3 === 0) return { x: mine.home.x + (p.team === 'allies' ? 260 : -260), y: mine.home.y + (p.id % 2 ? -220 : 220) }; // defenders
+    if (theirs.state === 'carried') { const c = room.players.get(theirs.carrier); if (c) return c; } // escort
+    return { x: theirs.x, y: theirs.y };
+  }
+  if (room.mode === 'hq') return o.zones[o.idx];
+  return null;
+}
 function botThink(room, p, now, dt) {
   if (!p.alive) return;
   const b = p.bot;
@@ -564,6 +691,14 @@ function botThink(room, p, now, dt) {
   }
   let mx = 0, my = 0, fire = false, ads = false, sprint = false, crouch = false;
   const t = b.target && b.target.alive ? b.target : null;
+  // objective modes: keep a route to the objective even while fighting
+  const goalObj = botGoal(room, p);
+  const flagCarrier = room.mode === 'ctf' && room.obj && room.obj.flags[p.team === 'allies' ? 'axis' : 'allies'].carrier === p.id;
+  if (goalObj && t && (!b.path || !b.path.length || now >= b.nextPath)) {
+    b.nextPath = now + 900;
+    const near = Math.hypot(goalObj.x - p.x, goalObj.y - p.y) < 70;
+    b.path = findPath(p.x, p.y, goalObj.x + (Math.random() - 0.5) * (near ? 120 : 50), goalObj.y + (Math.random() - 0.5) * (near ? 120 : 50));
+  }
   if (t) {
     const dx = t.x - p.x, dy = t.y - p.y, d = Math.hypot(dx, dy);
     b.aimErr *= Math.pow(0.3, dt);
@@ -584,20 +719,33 @@ function botThink(room, p, now, dt) {
     if (st.cls === 'Shotgun' && d > 120) fwd = 1;
     mx = ux * fwd + -uy * b.strafe * 0.8;
     my = uy * fwd + ux * b.strafe * 0.8;
+    // push the objective while shooting (always when carrying the flag)
+    if (goalObj && b.path && b.path.length && (d > 220 || flagCarrier)) {
+      while (b.path.length && Math.hypot(b.path[0].x - p.x, b.path[0].y - p.y) < 24) b.path.shift();
+      if (b.path.length) {
+        const wx = b.path[0].x - p.x, wy = b.path[0].y - p.y, wd = Math.hypot(wx, wy) || 1;
+        mx = wx / wd * 0.9 - uy * b.strafe * 0.3; my = wy / wd * 0.9 + ux * b.strafe * 0.3;
+      }
+    }
     if (Math.random() < 0.002 * (dt * 60) && p.nades > 0 && d > 220 && d < 550) { const sp = p.pitch; p.pitch = 0.35 + (d - 220) / 1200; room.throwNade(p, now); p.pitch = sp; }
-    b.path = null;
+    if (!goalObj) b.path = null;
   } else {
     if (g.ammo < st.mag * 0.5) room.startReload(p, now);
     if (!b.path || !b.path.length || now >= b.nextPath) {
       b.nextPath = now + 1500;
-      let goal = null, gd = Infinity;
-      for (const q of room.players.values()) {
-        if (!q.alive || q.team === p.team) continue;
-        const d = Math.hypot(q.x - p.x, q.y - p.y);
-        if (d < gd) { gd = d; goal = q; }
+      let goal = goalObj, spread = 50;
+      if (goal) { b.nextPath = now + 900; if (Math.hypot(goal.x - p.x, goal.y - p.y) < 70) spread = 120; }
+      else {
+        spread = 200;
+        let gd = Infinity;
+        for (const q of room.players.values()) {
+          if (!q.alive || q.team === p.team) continue;
+          const d = Math.hypot(q.x - p.x, q.y - p.y);
+          if (d < gd) { gd = d; goal = q; }
+        }
       }
       const gx = goal ? goal.x : Math.random() * S.MAP_W, gy = goal ? goal.y : Math.random() * S.MAP_H;
-      b.path = findPath(p.x, p.y, gx + (Math.random() - 0.5) * 200, gy + (Math.random() - 0.5) * 200);
+      b.path = findPath(p.x, p.y, gx + (Math.random() - 0.5) * spread, gy + (Math.random() - 0.5) * spread);
     }
     while (b.path.length && Math.hypot(b.path[0].x - p.x, b.path[0].y - p.y) < 24) b.path.shift();
     if (b.path.length > 1 && S.hasLOS(p.x, p.y, b.path[1].x, b.path[1].y) && Math.random() < 0.3) b.path.shift();
@@ -649,18 +797,19 @@ function connect(ws) {
       let code;
       if (m.t === 'create') {
         do { code = Array.from({ length: 5 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join(''); } while (rooms.has(code));
-        room = new Room(code, { lobby: true, name: m.lobbyName || name + "'s lobby", bots: m.bots, score: m.score, time: m.time, priv: m.priv });
+        room = new Room(code, { lobby: true, name: m.lobbyName || name + "'s lobby", bots: m.bots, score: m.score, time: m.time, priv: m.priv, map: m.map, mode: m.mode });
         rooms.set(code, room);
       } else {
         code = String(m.room || 'PUBLIC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'PUBLIC';
         room = rooms.get(code);
         if (!room) {
           if (code !== 'PUBLIC' && code !== 'OFFLINE' && !m.quick) { ws.send(JSON.stringify({ t: 'err', msg: 'No lobby found with code ' + code + '.' })); room = null; return; }
-          room = new Room(code, { bots: m.bots == null ? 4 : m.bots });
+          room = new Room(code, code === 'PUBLIC' ? { bots: 4, rotate: true } : { bots: m.bots == null ? 4 : m.bots, map: m.map, mode: m.mode, time: m.time });
           rooms.set(code, room);
         }
       }
       if (room.humans().length >= MAX_PLAYERS_PER_ROOM) { ws.send(JSON.stringify({ t: 'err', msg: 'That lobby is full.' })); room = null; return; }
+      useRoom(room);
       player = basePlayer(name);
       player.ws = ws;
       player.pendingLoadout = S.sanitizeLoadout(m.loadout);
@@ -671,6 +820,8 @@ function connect(ws) {
       return;
     }
     if (!player) return;
+    if (rooms.get(room.code) !== room) return;
+    useRoom(room);
     switch (m.t) {
       case 'in':
         if (Array.isArray(m.l)) room.applyInputs(player, m.l.slice(0, 20));
@@ -717,7 +868,7 @@ function connect(ws) {
       case 'ping': ws.send(JSON.stringify({ t: 'pong', c: m.c })); break;
     }
   }
-  function close() { if (room && player) { room.removePlayer(player.id); player = null; } }
+  function close() { if (room && player) { useRoom(room); room.removePlayer(player.id); player = null; } }
   return { message, close };
 }
 
@@ -726,10 +877,10 @@ function tick() {
   const now = Date.now();
   const dt = Math.min(0.1, (now - lastTick) / 1000);
   lastTick = now;
-  for (const room of rooms.values()) room.tick(now, dt);
+  for (const room of rooms.values()) { useRoom(room); room.tick(now, dt); }
 }
 
-const api = { connect, tick, rooms, TICK_MS: 1000 / 60 };
+const api = { connect, tick, rooms, useRoom, TICK_MS: 1000 / 60 };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 else root.Sim = api;
 })(typeof self !== 'undefined' ? self : this);

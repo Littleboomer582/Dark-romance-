@@ -4,7 +4,18 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
 
 ## Features
 
-- **Online team deathmatch**: first team to 50 kills, or the leading team after 10 minutes. Up to 16 players per room.
+- **4 maps**:
+  - **Ruins:** bombed-out town.
+  - **Village:** French farm houses, a barn and a fountain square.
+  - **Winter Forest:** snowy pines, log piles, foxholes and falling snow.
+  - **Pacific Island:** beach bunkers, palms and sandbag lines.
+- **4 game modes**:
+  - **Team Deathmatch:** score kills.
+  - **Domination:** capture flags A, B and C. Each flag held scores points.
+  - **Capture the Flag:** bring the enemy flag to your base while your own flag is home.
+  - **Headquarters:** hold the active zone to score. It moves every minute.
+- Bots play the objectives. The host picks the map, mode, score limit and time limit, and Quick Play rotates through every map and mode.
+- Up to 16 players per room.
 - **Main menu with lobbies**:
   - **Quick Play** drops you into a public match.
   - **Create Lobby** makes you the host. You set bots per team, score limit and time limit, and choose public or private. You get a 5-letter code to share with friends.
