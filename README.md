@@ -26,6 +26,22 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
 - Frag grenades, knife and bayonet melee, aiming down sights, sprinting, crouching, health that regenerates, a rotating minimap with radar, damage-direction indicators, a death cam, a killfeed and a scoreboard.
 - The server decides all hits (authoritative server). Your own movement is predicted on your device so it feels responsive.
 
+## Android app (APK)
+
+**`frontline-1945.apk`** is a ready-to-install Android app for Android 7.0 and newer. The game is bundled inside, so **offline vs bots works with no internet**. Online play connects to your game server.
+
+1. Copy `frontline-1945.apk` to your phone, or download it there.
+2. Tap it. Android asks you to allow installing from this source (Chrome or Files). Allow it, then tap **Install**.
+3. Open **Frontline 1945**. It runs fullscreen in landscape.
+
+To rebuild it (needs a JDK and the Android SDK with `build-tools;34.0.0` and `platforms;android-34`):
+
+```bash
+ANDROID_HOME=/path/to/android-sdk ./android/build-apk.sh
+```
+
+The first build creates a signing key at `android/frontline.keystore`. Keep that file: Android only installs updates that are signed with the same key.
+
 ## Play in a web browser (one HTML file)
 
 Open **`frontline-1945.html`** in Chrome, Edge, Firefox or Safari. You can double-click it, and no install or server is needed.
