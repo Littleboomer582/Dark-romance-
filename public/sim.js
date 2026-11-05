@@ -9,7 +9,8 @@ const RESPAWN_MS = 3500;
 const MAX_PLAYERS_PER_ROOM = 16;
 const DOM_RADIUS = 100, FLAG_RADIUS = 38, FLAG_RETURN_MS = 15000, HQ_RADIUS = 140, HQ_MOVE_MS = 60000;
 // Quick Play cycles through every map and mode
-const ROTATION = [['ruins', 'tdm'], ['village', 'dom'], ['winter', 'ctf'], ['island', 'hq'], ['village', 'tdm'], ['winter', 'dom'], ['island', 'ctf'], ['ruins', 'hq'], ['winter', 'tdm'], ['island', 'dom'], ['ruins', 'ctf'], ['village', 'hq']];
+const ROTATION = [['ruins', 'tdm'], ['village', 'dom'], ['winter', 'ctf'], ['island', 'hq'], ['village', 'tdm'], ['winter', 'dom'], ['island', 'ctf'], ['ruins', 'hq'], ['winter', 'tdm'], ['island', 'dom'], ['ruins', 'ctf'], ['village', 'hq'],
+  ['rail', 'tdm'], ['camp', 'dom'], ['harbor', 'ctf'], ['rail', 'hq'], ['camp', 'tdm'], ['harbor', 'dom'], ['rail', 'ctf'], ['camp', 'hq'], ['harbor', 'tdm']];
 
 // ------------------------------------------------------------ bot pathing
 const CELL = 40;

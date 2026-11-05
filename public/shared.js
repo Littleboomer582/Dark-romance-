@@ -154,7 +154,9 @@
   // -------------------------------------------------------------------- map
   // k: wall | crate | sand
   // k: wall | crate | sand | house | tree | log | rock | bunker | fence
-  const HEIGHTS = { wall: 130, crate: 48, sand: 34, house: 170, tree: 320, log: 30, rock: 64, bunker: 95, fence: 42 };
+  // water blocks walking but bullets and grenades pass over it
+  const HEIGHTS = { wall: 130, crate: 48, sand: 34, house: 170, tree: 320, log: 30, rock: 64, bunker: 95, fence: 42,
+    boxcar: 112, shed: 150, coal: 70, post: 300, water: 1, warehouse: 190, cargo: 96, palisade: 210, hut: 140 };
   const mirror = (list) => list.concat(list.map((r) => Object.assign({}, r, { x: MAP_W - r.x - r.w })));
   // a building made of wall segments with doorways ('n','s','e','w')
   function house(x, y, w, h, doors, t, k) {
@@ -234,11 +236,60 @@
   ]);
   const islandLeft = islandLeft0.concat(scatter(33, 13, 'tree', 22, [320, 60, 1060, 1520], islandLeft0.concat(islandCenter, [{ x: 0, y: 0, w: 300, h: 1600 }])));
 
+  // ---- Rail Yard: boxcars, sheds and coal piles around a water tower
+  const railLeft = [].concat(house(340, 620, 190, 360, 'e', 16, 'shed'), [
+    { x: 420, y: 300, w: 210, h: 44, k: 'boxcar' }, { x: 420, y: 1256, w: 210, h: 44, k: 'boxcar' },
+    { x: 700, y: 560, w: 230, h: 44, k: 'boxcar' }, { x: 700, y: 996, w: 230, h: 44, k: 'boxcar' },
+    { x: 900, y: 190, w: 120, h: 90, k: 'coal' }, { x: 900, y: 1320, w: 120, h: 90, k: 'coal' },
+    { x: 620, y: 770, w: 60, h: 60, k: 'crate' }, { x: 990, y: 740, w: 30, h: 120, k: 'sand' },
+    { x: 1020, y: 360, w: 60, h: 60, k: 'crate' }, { x: 1020, y: 1180, w: 60, h: 60, k: 'crate' },
+  ]);
+  const railCenter = [
+    { x: 1146, y: 746, w: 14, h: 14, k: 'post' }, { x: 1240, y: 746, w: 14, h: 14, k: 'post' }, { x: 1146, y: 840, w: 14, h: 14, k: 'post' }, { x: 1240, y: 840, w: 14, h: 14, k: 'post' },
+    { x: 1090, y: 420, w: 220, h: 44, k: 'boxcar' }, { x: 1090, y: 1136, w: 220, h: 44, k: 'boxcar' },
+    { x: 1170, y: 150, w: 60, h: 60, k: 'crate' }, { x: 1170, y: 1390, w: 60, h: 60, k: 'crate' },
+  ];
+
+  // ---- Harbor: warehouses and cargo on both sides of a canal with two bridges
+  const harborLeft = [].concat(house(330, 150, 330, 250, 'se', 18, 'warehouse'), house(330, 1200, 330, 250, 'ne', 18, 'warehouse'), [
+    { x: 760, y: 300, w: 90, h: 90, k: 'cargo' }, { x: 760, y: 1210, w: 90, h: 90, k: 'cargo' }, { x: 880, y: 720, w: 100, h: 160, k: 'cargo' },
+    { x: 560, y: 620, w: 60, h: 60, k: 'crate' }, { x: 560, y: 920, w: 60, h: 60, k: 'crate' },
+    { x: 1010, y: 400, w: 30, h: 110, k: 'sand' }, { x: 1010, y: 1090, w: 30, h: 110, k: 'sand' },
+    { x: 1040, y: 760, w: 40, h: 80, k: 'crate' },
+  ]);
+  const harborCenter = [
+    { x: 1150, y: 0, w: 100, h: 380, k: 'water' }, { x: 1150, y: 480, w: 100, h: 640, k: 'water' }, { x: 1150, y: 1220, w: 100, h: 380, k: 'water' },
+  ];
+
+  // ---- Boot Camp: a small, fast arena inside a palisade
+  const campLeft = [].concat(house(640, 440, 200, 130, 's', 14, 'hut'), house(640, 1030, 200, 130, 'n', 14, 'hut'), [
+    { x: 910, y: 640, w: 110, h: 26, k: 'log' }, { x: 910, y: 934, w: 110, h: 26, k: 'log' },
+    { x: 880, y: 860, w: 30, h: 0, k: 'sand' },
+    { x: 1010, y: 470, w: 30, h: 110, k: 'sand' }, { x: 1010, y: 1020, w: 30, h: 110, k: 'sand' },
+    { x: 780, y: 770, w: 50, h: 50, k: 'crate' },
+  ]).filter((w) => w.h > 0);
+  const campCenter = [
+    { x: 560, y: 360, w: 1280, h: 40, k: 'palisade' }, { x: 560, y: 1200, w: 1280, h: 40, k: 'palisade' },
+    { x: 560, y: 400, w: 40, h: 800, k: 'palisade' }, { x: 1800, y: 400, w: 40, h: 800, k: 'palisade' },
+    { x: 1160, y: 760, w: 16, h: 16, k: 'post' }, { x: 1224, y: 760, w: 16, h: 16, k: 'post' }, { x: 1160, y: 824, w: 16, h: 16, k: 'post' }, { x: 1224, y: 824, w: 16, h: 16, k: 'post' },
+    { x: 1175, y: 470, w: 50, h: 50, k: 'crate' }, { x: 1175, y: 1080, w: 50, h: 50, k: 'crate' },
+  ];
+  const campSpawns = (xs) => [[625, 640], [625, 800], [625, 960], [700, 700], [700, 900], [690, 620], [690, 980]].map(([x, y]) => ({ x: xs ? MAP_W - x : x, y }));
+
   const MAPS = {
     ruins: { name: 'Ruins', desc: 'Bombed-out town ruins', theme: 'ruins', walls: mirror(ruinsLeft).concat(ruinsCenter) },
     village: { name: 'Village', desc: 'French farm village', theme: 'village', walls: mirror(villageLeft).concat(villageCenter) },
     winter: { name: 'Winter Forest', desc: 'Snowy pine forest', theme: 'winter', walls: mirror(winterLeft).concat(winterCenter, mirror(winterMid)) },
     island: { name: 'Pacific Island', desc: 'Beach bunkers and palms', theme: 'island', walls: mirror(islandLeft).concat(islandCenter) },
+    rail: { name: 'Rail Yard', desc: 'Freight depot with boxcars and a water tower', theme: 'rail', walls: mirror(railLeft).concat(railCenter),
+      props: [{ type: 'watertower', x: 1200, y: 800 }].concat([322, 1278, 582, 1018, 442, 1158].map((y) => ({ type: 'rails', y }))) },
+    harbor: { name: 'Harbor', desc: 'Docks and warehouses split by a canal', theme: 'harbor', walls: mirror(harborLeft).concat(harborCenter),
+      props: [{ type: 'bridge', x: 1150, y: 380, w: 100, h: 100 }, { type: 'bridge', x: 1150, y: 1120, w: 100, h: 100 }],
+      obj: { dom: [[560, 800], [1200, 1170], [1840, 800]], hq: [[1200, 430], [720, 560], [1680, 1060], [720, 1060], [1680, 560]] } },
+    camp: { name: 'Boot Camp', desc: 'Small, fast close-quarters arena', theme: 'camp', walls: mirror(campLeft).concat(campCenter),
+      props: [{ type: 'tower', x: 1200, y: 800 }],
+      spawns: { allies: campSpawns(false), axis: campSpawns(true) },
+      obj: { dom: [[860, 800], [1200, 700], [1540, 800]], flags: [[690, 800], [1710, 800]], hq: [[1200, 700], [900, 540], [1500, 1060], [900, 1060], [1500, 540]] } },
   };
   const MAP_IDS = Object.keys(MAPS);
 
@@ -255,6 +306,7 @@
   const SPAWNS = { allies: [], axis: [] };
   for (const y of [180, 420, 640, 960, 1180, 1420]) { SPAWNS.allies.push({ x: 90, y }); SPAWNS.axis.push({ x: MAP_W - 90, y }); }
   for (const y of [300, 800, 1300]) { SPAWNS.allies.push({ x: 230, y }); SPAWNS.axis.push({ x: MAP_W - 230, y }); }
+  const DEFAULT_SPAWNS = { allies: SPAWNS.allies.slice(), axis: SPAWNS.axis.slice() };
   let currentMap = null;
   function useMap(id) {
     if (!MAPS[id]) id = 'ruins';
@@ -262,6 +314,7 @@
     currentMap = id;
     WALLS.length = 0;
     for (const w of MAPS[id].walls) WALLS.push(w);
+    for (const team of ['allies', 'axis']) { SPAWNS[team].length = 0; for (const sp of (MAPS[id].spawns || DEFAULT_SPAWNS)[team]) SPAWNS[team].push(sp); }
     return MAPS[id];
   }
   // ---------------------------------------------------------------- physics
@@ -413,6 +466,10 @@
     m.dom = [freeSpot(560, midY), freeSpot(MAP_W / 2, id === 'ruins' ? 610 : id === 'village' ? 660 : id === 'island' ? 600 : 520), freeSpot(MAP_W - 560, midY)];
     m.flags = { allies: freeSpot(165, midY), axis: freeSpot(MAP_W - 165, midY) };
     m.hq = [freeSpot(MAP_W / 2, id === 'winter' ? 800 : 560), freeSpot(720, 380), freeSpot(MAP_W - 720, 1220), freeSpot(720, 1220), freeSpot(MAP_W - 720, 380)];
+    const o = m.obj || {};
+    if (o.dom) m.dom = o.dom.map(([x, y]) => freeSpot(x, y));
+    if (o.flags) m.flags = { allies: freeSpot(o.flags[0][0], o.flags[0][1]), axis: freeSpot(o.flags[1][0], o.flags[1][1]) };
+    if (o.hq) m.hq = o.hq.map(([x, y]) => freeSpot(x, y));
   }
   currentMap = null; useMap('ruins');
 

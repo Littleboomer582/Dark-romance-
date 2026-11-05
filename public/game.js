@@ -603,6 +603,36 @@ function tex(name) {
     snowrock: () => canvasTex(128, (g, n) => { speckle(g, n, '#9da3ab', ['rgba(230,236,242,.8)', 'rgba(120,125,132,.5)'], 1500, 71, 7); g.fillStyle = 'rgba(240,244,248,.85)'; g.fillRect(0, 0, n, n * 0.3); }),
     jungle: () => canvasTex(128, (g, n) => speckle(g, n, '#2f4a24', ['rgba(60,95,40,.6)', 'rgba(25,40,18,.6)', 'rgba(90,120,55,.4)'], 2500, 81, 6)),
     bag: () => canvasTex(64, (g, n) => speckle(g, n, '#b09a6b', ['rgba(120,100,60,.4)', 'rgba(200,185,140,.3)'], 300, 9, 2)),
+    gravel: () => canvasTex(256, (g, n) => speckle(g, n, '#6f6a60', ['rgba(90,86,78,.6)', 'rgba(140,134,120,.5)', 'rgba(60,55,50,.5)', 'rgba(110,80,55,.35)'], 4200, 101, 3), 40, 28),
+    dock: () => canvasTex(256, (g, n) => {
+      speckle(g, n, '#7d7b74', ['rgba(100,98,92,.5)', 'rgba(140,138,130,.4)'], 1800, 111, 4);
+      g.strokeStyle = 'rgba(50,48,44,.6)'; g.lineWidth = 2;
+      for (let i = 0; i <= n; i += 64) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, n); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(n, i); g.stroke(); }
+      g.fillStyle = 'rgba(40,36,30,.25)'; const r = rng(113); for (let i = 0; i < 12; i++) { g.beginPath(); g.ellipse(r() * n, r() * n, 10 + r() * 20, 6 + r() * 10, r() * 3, 0, TAU); g.fill(); }
+    }, 38, 26),
+    boxcar: () => canvasTex(256, (g, n) => {
+      g.fillStyle = '#6e2e1f'; g.fillRect(0, 0, n, n);
+      for (let x = 0; x < n; x += 10) { g.fillStyle = x % 20 ? 'rgba(0,0,0,.12)' : 'rgba(255,255,255,.04)'; g.fillRect(x, 0, 10, n); g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x, 0, 1, n); }
+      g.fillStyle = '#3a2a22'; g.fillRect(n * 0.38, n * 0.12, n * 0.24, n * 0.88); // sliding door
+      g.strokeStyle = '#1f1612'; g.lineWidth = 4; g.strokeRect(n * 0.38, n * 0.12, n * 0.24, n * 0.88);
+      g.fillStyle = '#1e1e1e'; g.fillRect(0, 0, n, 10); g.fillRect(0, n - 14, n, 14);
+      g.fillStyle = 'rgba(230,220,200,.75)'; g.font = 'bold 20px sans-serif'; g.fillText('No. ' + (1000 + Math.floor(Math.random() * 8999)), 12, 40);
+      const r = rng(121); for (let i = 0; i < 300; i++) { g.fillStyle = 'rgba(140,70,30,.25)'; g.fillRect(r() * n, r() * n, 3, 2 + r() * 8); }
+    }),
+    corrugated: () => canvasTex(128, (g, n) => {
+      for (let x = 0; x < n; x += 8) { const gr = g.createLinearGradient(x, 0, x + 8, 0); gr.addColorStop(0, '#6d6a62'); gr.addColorStop(0.5, '#8d8a80'); gr.addColorStop(1, '#5a5850'); g.fillStyle = gr; g.fillRect(x, 0, 8, n); }
+      const r = rng(131); for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(${120 + r() * 40},${60 + r() * 20},20,.35)`; g.beginPath(); g.ellipse(r() * n, r() * n, 4 + r() * 12, 8 + r() * 20, 0, 0, TAU); g.fill(); }
+    }),
+    palisade: () => canvasTex(128, (g, n) => {
+      for (let x = 0; x < n; x += 16) { const gr = g.createLinearGradient(x, 0, x + 16, 0); gr.addColorStop(0, '#3b2a1a'); gr.addColorStop(0.5, '#7a5a3a'); gr.addColorStop(1, '#3a2817'); g.fillStyle = gr; g.fillRect(x, 0, 16, n); }
+      g.fillStyle = 'rgba(30,20,10,.5)'; g.fillRect(0, n * 0.3, n, 5); g.fillRect(0, n * 0.75, n, 5); // lashings
+    }),
+    planks: () => canvasTex(128, (g, n) => {
+      g.fillStyle = '#6a4b2e'; g.fillRect(0, 0, n, n);
+      for (let y = 0; y < n; y += 16) { g.fillStyle = y % 32 ? '#5d4128' : '#73532f'; g.fillRect(0, y, n, 15); g.fillStyle = 'rgba(20,12,6,.6)'; g.fillRect(0, y + 15, n, 1); }
+      const r = rng(141); for (let i = 0; i < 30; i++) { g.fillStyle = 'rgba(20,12,6,.7)'; g.fillRect(r() * n, Math.floor(r() * 8) * 16 + 7, 2, 2); }
+    }),
+    coal: () => canvasTex(64, (g, n) => speckle(g, n, '#1c1b1a', ['rgba(60,60,62,.6)', 'rgba(10,10,10,.6)', 'rgba(90,90,95,.3)'], 600, 151, 4)),
     bagSnow: () => canvasTex(64, (g, n) => { speckle(g, n, '#a8987a', ['rgba(120,100,60,.4)', 'rgba(240,244,248,.6)'], 300, 9, 2); g.fillStyle = 'rgba(240,244,248,.7)'; g.fillRect(0, 0, n, n * 0.35); }),
   };
   TEX[name] = T[name]();
@@ -614,6 +644,9 @@ const THEMES = {
   ruins: { fog: 0xb4ae98, near: 600, far: 3200, sky: 0xcfd6db, gnd: 0x5a5034, hemi: 1.25, sun: 0xfff0d0, sunI: 2.0, ground: 'dirt', perim: 'concrete', craters: 40, craterCol: 0x3b3524, wall: 'brick' },
   village: { fog: 0xc8c1ad, near: 650, far: 3300, sky: 0xd8dcd8, gnd: 0x6a5a3a, hemi: 1.3, sun: 0xffe9c4, sunI: 2.1, ground: 'village', perim: 'stone', craters: 14, craterCol: 0x4a4030, wall: 'stone' },
   winter: { fog: 0xd3d9e1, near: 300, far: 2300, sky: 0xe8f0fa, gnd: 0x9aa2ad, hemi: 1.45, sun: 0xe6eeff, sunI: 1.3, ground: 'snow', perim: 'snowrock', craters: 10, craterCol: 0xaab2bd, wall: 'logs', snow: true, treeline: 'pine' },
+  rail: { fog: 0xb8b2a6, near: 600, far: 3100, sky: 0xd0d2d2, gnd: 0x5a5244, hemi: 1.2, sun: 0xffe6c0, sunI: 1.9, ground: 'gravel', perim: 'brick', craters: 18, craterCol: 0x3a3630, wall: 'brick' },
+  harbor: { fog: 0xa9b5bc, near: 500, far: 2900, sky: 0xc6d2da, gnd: 0x5c5e5c, hemi: 1.25, sun: 0xf2f0e8, sunI: 1.6, ground: 'dock', perim: 'brick', craters: 10, craterCol: 0x3e3c38, wall: 'brick' },
+  camp: { fog: 0xc8bf9f, near: 700, far: 3200, sky: 0xd9d8c8, gnd: 0x6a5a3a, hemi: 1.3, sun: 0xfff0cc, sunI: 2.1, ground: 'dirt', perim: 'palisade', craters: 12, craterCol: 0x4a3f2a, wall: 'planks' },
   island: { fog: 0xbcd6e2, near: 800, far: 3600, sky: 0xd6eefb, gnd: 0xa08f62, hemi: 1.3, sun: 0xfff2d6, sunI: 2.5, ground: 'sand', perim: 'jungle', craters: 22, craterCol: 0x8a7a52, wall: 'concrete', treeline: 'palm' },
 };
 const M = {
@@ -629,6 +662,11 @@ const M = {
   frond: new THREE.MeshLambertMaterial({ color: 0x3f6b2a, side: THREE.DoubleSide }),
   fence: new THREE.MeshLambertMaterial({ color: 0x6b5236 }),
   water: new THREE.MeshLambertMaterial({ color: 0x9fb8c0 }),
+  canal: new THREE.MeshStandardMaterial({ color: 0x2d4a52, roughness: 0.12, metalness: 0.2, transparent: true, opacity: 0.92 }),
+  steel: new THREE.MeshStandardMaterial({ color: 0x45474a, roughness: 0.6, metalness: 0.6 }),
+  rail: new THREE.MeshStandardMaterial({ color: 0x5a5550, roughness: 0.4, metalness: 0.8 }),
+  sleeper: new THREE.MeshLambertMaterial({ color: 0x3e2f22 }),
+  tank: new THREE.MeshStandardMaterial({ color: 0x5b4a3a, roughness: 0.7, metalness: 0.3 }),
 };
 function wallMat(name, w, h) { const t = tex(name).clone(); t.needsUpdate = true; t.repeat.set(w, h); return new THREE.MeshLambertMaterial({ map: t }); }
 
@@ -742,13 +780,60 @@ function buildWorld(mapId) {
       for (const y of [w.ht * 0.35, w.ht * 0.8]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(horiz ? len : 3, 5, horiz ? 3 : len), M.fence); rail.position.set(cx, y, cz); rail.castShadow = true; g.add(rail); }
       continue;
     }
+    if (w.k === 'water') {
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(w.w, 4, w.h), new THREE.MeshLambertMaterial({ color: 0x202a2c })); bed.position.set(cx, -1.5, cz); g.add(bed);
+      const wt = new THREE.Mesh(new THREE.PlaneGeometry(w.w, w.h), M.canal); wt.rotation.x = -Math.PI / 2; wt.position.set(cx, 0.8, cz); g.add(wt);
+      for (const side of [-1, 1]) { const edge = new THREE.Mesh(new THREE.BoxGeometry(8, 8, w.h), wallMat('concrete', 0.2, w.h / 100)); edge.position.set(cx + side * (w.w / 2 + 4), 4, cz); edge.receiveShadow = true; g.add(edge); }
+      continue;
+    }
+    if (w.k === 'boxcar') {
+      const horiz = w.w >= w.h, len = horiz ? w.w : w.h, dep = horiz ? w.h : w.w;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(horiz ? len : dep, w.ht - 16, horiz ? dep : len), wallMat('boxcar', 1, 1));
+      body.position.set(cx, 16 + (w.ht - 16) / 2, cz); body.castShadow = body.receiveShadow = true; g.add(body);
+      const roof = new THREE.Mesh(new THREE.BoxGeometry((horiz ? len : dep) + 4, 5, (horiz ? dep : len) + 6), M.steel); roof.position.set(cx, w.ht + 1, cz); roof.castShadow = true; g.add(roof);
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(horiz ? len - 10 : dep - 8, 8, horiz ? dep - 8 : len - 10), M.dark); frame.position.set(cx, 12, cz); g.add(frame);
+      for (const a of [-0.38, -0.25, 0.25, 0.38]) for (const sd of [-1, 1]) {
+        const wh = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 4, 14), M.steel); wh.rotation.x = Math.PI / 2; if (!horiz) wh.rotation.z = Math.PI / 2;
+        wh.position.set(cx + (horiz ? a * len : sd * dep * 0.42), 7, cz + (horiz ? sd * dep * 0.42 : a * len)); g.add(wh);
+      }
+      continue;
+    }
+    if (w.k === 'coal') {
+      const heap = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w.w, w.h) * 0.62, w.ht, 10), new THREE.MeshLambertMaterial({ map: tex('coal') }));
+      heap.scale.set(1, 1, w.h / w.w); heap.position.set(cx, w.ht / 2, cz); heap.castShadow = heap.receiveShadow = true; g.add(heap);
+      continue;
+    }
+    if (w.k === 'post') {
+      const pst = new THREE.Mesh(new THREE.BoxGeometry(w.w, w.ht, w.h), map.theme === 'camp' ? wallMat('logs', 1, 3) : M.steel); pst.position.set(cx, w.ht / 2, cz); pst.castShadow = true; g.add(pst);
+      continue;
+    }
+    if (w.k === 'cargo') {
+      const r2 = rng(Math.floor(cx * 3 + cz));
+      const lw = w.w, lh = w.h, cols = [0x5d6b3e, 0x6b4a2e, 0x4b5a6a, 0x7a5a34];
+      for (let lvl = 0; lvl < 2; lvl++) {
+        const bx = new THREE.Mesh(new THREE.BoxGeometry(lw - lvl * 10, w.ht / 2 - 1, lh - lvl * 10), lvl ? new THREE.MeshLambertMaterial({ map: tex('wood'), color: cols[Math.floor(r2() * 4)] }) : wallMat('wood', 1, 1));
+        bx.position.set(cx + (r2() - 0.5) * 6 * lvl, w.ht / 4 + lvl * w.ht / 2, cz + (r2() - 0.5) * 6 * lvl); bx.rotation.y = (r2() - 0.5) * 0.12 * lvl; bx.castShadow = bx.receiveShadow = true; g.add(bx);
+      }
+      continue;
+    }
     let mat;
-    if (w.k === 'crate') mat = wallMat('wood', Math.max(1, Math.round(Math.max(w.w, w.h) / 50)), Math.max(1, Math.round(w.ht / 50)));
+    if (w.k === 'shed' || w.k === 'warehouse') mat = wallMat('corrugated', Math.max(w.w, w.h) / 60, w.ht / 100);
+    else if (w.k === 'palisade') mat = wallMat('palisade', Math.max(w.w, w.h) / 64, 1);
+    else if (w.k === 'hut') mat = wallMat('planks', Math.max(w.w, w.h) / 100, w.ht / 100);
+    else if (w.k === 'crate') mat = wallMat('wood', Math.max(1, Math.round(Math.max(w.w, w.h) / 50)), Math.max(1, Math.round(w.ht / 50)));
     else if (w.k === 'house') mat = wallMat('plaster', Math.max(w.w, w.h) / 140, w.ht / 170);
     else if (w.k === 'bunker') mat = wallMat('concrete', Math.max(w.w, w.h) / 100, w.ht / 100);
     else mat = wallMat(th.wall, Math.max(w.w, w.h) / 64, w.ht / 64);
     const m = new THREE.Mesh(new THREE.BoxGeometry(w.w, w.ht, w.h), mat);
     m.position.set(cx, w.ht / 2, cz); m.castShadow = m.receiveShadow = true; g.add(m);
+    if (w.k === 'palisade') { // pointed log tops
+      const horiz = w.w >= w.h, len = horiz ? w.w : w.h, n = Math.floor(len / 16);
+      const tips = new THREE.InstancedMesh(new THREE.ConeGeometry(8, 18, 6), M.bark, n);
+      const mt = new THREE.Matrix4();
+      for (let i = 0; i < n; i++) { const t = (i + 0.5) / n; mt.makeTranslation(horiz ? w.x + t * len : cx, w.ht + 9, horiz ? cz : w.y + t * len); tips.setMatrixAt(i, mt); }
+      g.add(tips);
+    }
+    if (w.k === 'shed' || w.k === 'warehouse' || w.k === 'hut') { const cap = new THREE.Mesh(new THREE.BoxGeometry(w.w + 4, 6, w.h + 4), w.k === 'hut' ? wallMat('planks', 1, 0.1) : M.steel); cap.position.set(cx, w.ht + 3, cz); cap.castShadow = true; g.add(cap); }
     if (w.k === 'wall' || w.k === 'house' || w.k === 'bunker') {
       const capMat = map.theme === 'winter' ? M.pineSnow : wallMat(w.k === 'house' ? 'wood' : 'concrete', 2, 0.2);
       const cap = new THREE.Mesh(new THREE.BoxGeometry(w.w + 4, w.k === 'bunker' ? 10 : 6, w.h + 4), capMat);
@@ -760,6 +845,28 @@ function buildWorld(mapId) {
     const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3();
     bags.forEach((b, i) => { q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), b.rot + (r() - 0.5) * 0.1); sc.set(b.sx, 6.3, b.sz); pos.set(b.x, b.y, b.z); mtx.compose(pos, q, sc); inst.setMatrixAt(i, mtx); });
     inst.castShadow = inst.receiveShadow = true; g.add(inst);
+  }
+  // set pieces
+  for (const pr of map.props || []) {
+    if (pr.type === 'rails') {
+      for (const off of [-12, 12]) { const rl = new THREE.Mesh(new THREE.BoxGeometry(S.MAP_W - 600, 3, 3), M.rail); rl.position.set(S.MAP_W / 2, 1.5, pr.y + off); rl.receiveShadow = true; g.add(rl); }
+      const n = Math.floor((S.MAP_W - 600) / 26), sl = new THREE.InstancedMesh(new THREE.BoxGeometry(8, 2, 40), M.sleeper, n), mt = new THREE.Matrix4();
+      for (let i = 0; i < n; i++) { mt.makeTranslation(300 + i * 26, 0.8, pr.y); sl.setMatrixAt(i, mt); }
+      sl.receiveShadow = true; g.add(sl);
+    } else if (pr.type === 'watertower') {
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(64, 64, 80, 24), M.tank); tank.position.set(pr.x, 340, pr.y); tank.castShadow = true; g.add(tank);
+      const top = new THREE.Mesh(new THREE.ConeGeometry(70, 34, 24), M.steel); top.position.set(pr.x, 397, pr.y); top.castShadow = true; g.add(top);
+      const deck = new THREE.Mesh(new THREE.CylinderGeometry(72, 72, 4, 24), M.steel); deck.position.set(pr.x, 300, pr.y); g.add(deck);
+      for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) { const br = new THREE.Mesh(new THREE.BoxGeometry(dx ? 4 : 94, 4, dz ? 4 : 94), M.steel); br.position.set(pr.x + dx * 47, 150, pr.y + dz * 47); g.add(br); }
+    } else if (pr.type === 'tower') {
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(96, 8, 96), wallMat('planks', 1, 1)); deck.position.set(pr.x, 200, pr.y); deck.castShadow = true; g.add(deck);
+      for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) { const rl = new THREE.Mesh(new THREE.BoxGeometry(dx ? 4 : 96, 30, dz ? 4 : 96), wallMat('planks', 1, 0.3)); rl.position.set(pr.x + dx * 46, 219, pr.y + dz * 46); g.add(rl); }
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(80, 40, 4), wallMat('planks', 1, 1)); roof.rotation.y = Math.PI / 4; roof.position.set(pr.x, 290, pr.y); roof.castShadow = true; g.add(roof);
+      for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const pl = new THREE.Mesh(new THREE.BoxGeometry(6, 60, 6), wallMat('logs', 1, 1)); pl.position.set(pr.x + dx * 42, 260, pr.y + dz * 42); g.add(pl); }
+    } else if (pr.type === 'bridge') {
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(pr.w + 40, 6, pr.h), wallMat('planks', 1, 1)); deck.position.set(pr.x + pr.w / 2, 3, pr.y + pr.h / 2); deck.receiveShadow = true; g.add(deck);
+      for (const sd of [0, 1]) { const rl = new THREE.Mesh(new THREE.BoxGeometry(pr.w + 40, 4, 4), M.steel); rl.position.set(pr.x + pr.w / 2, 30, pr.y + sd * pr.h); g.add(rl); for (const px of [0, 0.5, 1]) { const po = new THREE.Mesh(new THREE.BoxGeometry(4, 30, 4), M.steel); po.position.set(pr.x - 20 + px * (pr.w + 40), 15, pr.y + sd * pr.h); g.add(po); } }
+    }
   }
   // perimeter + tree line beyond it
   const per = 180;
@@ -1898,7 +2005,7 @@ function drawMinimap(players) {
   c.translate(-pred.x, -pred.y);
   c.fillStyle = 'rgba(70,65,45,.9)'; c.fillRect(0, 0, S.MAP_W, S.MAP_H);
   c.fillStyle = 'rgba(210,200,170,.75)';
-  for (const w of S.WALLS) c.fillRect(w.x, w.y, w.w, w.h);
+  for (const w of S.WALLS) { c.fillStyle = w.k === 'water' ? 'rgba(70,120,140,.85)' : 'rgba(210,200,170,.75)'; c.fillRect(w.x, w.y, w.w, w.h); }
   for (const [id, p] of players) {
     if (id === myId || !(p.f & 2)) continue;
     const team = p.f & 1 ? 'axis' : 'allies';

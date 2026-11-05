@@ -4,11 +4,14 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
 
 ## Features
 
-- **4 maps**:
+- **7 maps**:
   - **Ruins:** bombed-out town.
   - **Village:** French farm houses, a barn and a fountain square.
   - **Winter Forest:** snowy pines, log piles, foxholes and falling snow.
   - **Pacific Island:** beach bunkers, palms and sandbag lines.
+  - **Rail Yard:** a freight depot with boxcars, sheds, coal heaps and a water tower.
+  - **Harbor:** warehouses and cargo split by a canal with two bridges. The water stops you walking, but bullets fly over it.
+  - **Boot Camp:** a small, fast close-quarters arena inside a log palisade.
 - **4 game modes**:
   - **Team Deathmatch:** score kills.
   - **Domination:** capture flags A, B and C. Each flag held scores points.
