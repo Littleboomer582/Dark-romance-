@@ -2321,7 +2321,9 @@ function frame(now) {
     setArm(vm.lArm, tmpB.copy(vm.lHand.position).add(tmpC.set(-1.0, -0.9, -0.2)), vm.lElbow, 1.8);
     // position: hip <-> aim down sights
     const hip = G.pistol ? VM_HIP_PISTOL : VM_HIP;
-    const target = tmpA.set(-(G.sightZ || 0), -G.sightH, G.pistol ? -14 : -15.5).lerp(hip, 1 - adsT);
+    // reflex and holographic sights sit close to the eye, so the window fills more of the view
+    const adsZ = G.pistol ? -14 : st.optic === 'holo' || st.optic === 'reddot' ? -8.5 : -15.5;
+    const target = tmpA.set(-(G.sightZ || 0), -G.sightH, adsZ).lerp(hip, 1 - adsT);
     const bobA = movingNow ? (1 - adsT * 0.85) : 0;
     target.x += Math.sin(bobPhase) * 0.6 * bobA;
     target.y += Math.abs(Math.cos(bobPhase)) * 0.5 * bobA - crouchT * 0.3 + Math.sin(now / 700) * 0.12 * (1 - adsT);
@@ -2420,7 +2422,7 @@ function drawOverlay(now, players, st, scoped, ads, moving, sprint) {
     c.globalAlpha = Math.min(1, (adsT - 0.75) * 4);
     c.fillStyle = '#ff3020'; c.strokeStyle = '#ff3020'; c.lineWidth = 1.6;
     c.beginPath(); c.arc(cx, cy, 2.2, 0, TAU); c.fill();
-    if (st.optic === 'holo') { c.beginPath(); c.arc(cx, cy, 16, 0, TAU); c.stroke(); for (const a of [0, 1, 2, 3]) { const an = a * Math.PI / 2; c.beginPath(); c.moveTo(cx + Math.cos(an) * 16, cy + Math.sin(an) * 16); c.lineTo(cx + Math.cos(an) * 21, cy + Math.sin(an) * 21); c.stroke(); } }
+    if (st.optic === 'holo') { const R = Math.min(W, H) * 0.035; c.beginPath(); c.arc(cx, cy, R, 0, TAU); c.stroke(); for (const k of [0, 1, 3]) { const an = k * Math.PI / 2; c.beginPath(); c.moveTo(cx + Math.cos(an) * R, cy + Math.sin(an) * R); c.lineTo(cx + Math.cos(an) * R * 0.72, cy + Math.sin(an) * R * 0.72); c.stroke(); } }
     c.globalAlpha = 1;
   }
   if (you.alive && inGame() && !scoped) {

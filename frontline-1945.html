@@ -2372,6 +2372,8 @@ function materials() {
     polyTan: new THREE.MeshStandardMaterial({ color: 0x8a7a58, roughness: 0.75, metalness: 0.05, roughnessMap: roughMatte, envMapIntensity: 0.3 }),
     polyOd: new THREE.MeshStandardMaterial({ color: 0x4a5034, roughness: 0.75, metalness: 0.05, roughnessMap: roughMatte, envMapIntensity: 0.3 }),
     redLens: new THREE.MeshBasicMaterial({ color: 0xff3020 }),
+    // see-through optic glass (holographic and reflex sights)
+    clearGlass: new THREE.MeshBasicMaterial({ color: 0x9fd8ff, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }),
     gripWood: new THREE.MeshPhysicalMaterial({ map: walnut, bumpMap: check, bumpScale: 1.2, roughness: 0.6, clearcoat: 0.2 }),
     gripBlack: new THREE.MeshStandardMaterial({ color: 0x1a1512, bumpMap: check, bumpScale: 1.2, roughness: 0.55 }),
     brass: new THREE.MeshStandardMaterial({ color: 0xc09a45, metalness: 1, roughness: 0.28 }),
@@ -2898,12 +2900,14 @@ function buildModern(M, id, has) {
   if (sp.bipod) for (const sd of [-1, 1]) { const leg = new THREE.Group(); leg.position.set(hx + hl + sp.bar * 0.5, B - 0.6, sd * 0.8); leg.add(tube(0.25, 7, M.blued, 0, 0, 0)); leg.rotation.set(sd * 0.12, 0, -1.2); g.add(leg); } // folded down
   // top rail / carry handle / sights
   let sightH, scopeBase = top + 0.25;
+  const optic = has('reddot') || has('holo') || has('acog') || has('scope');
   if (sp.rail) {
     const railLen = (sp.bull ? L - 2 : L + hl - 2);
     g.add(box(railLen, 0.45, 1.2, M.blued, (sp.bull ? -6 : -2) + railLen / 2, top + 0.22, 0));
     for (let x = 0; x < railLen; x += 0.9) g.add(box(0.35, 0.2, 1.25, M.dark, (sp.bull ? -6 : -2) + x, top + 0.48, 0));
     scopeBase = top + 0.45; sightH = top + 1.5;
-    g.add(rbox(0.8, 1.1, 1.0, M.dark, -1.5, top + 1.0, 0, 0.15)); g.add(rbox(0.6, 1.1, 0.5, M.dark, (sp.bull ? L - 4 : hx + hl - 1), top + 1.0, 0, 0.1));
+    if (!optic) { g.add(rbox(0.8, 1.1, 1.0, M.dark, -1.5, top + 1.0, 0, 0.15)); g.add(rbox(0.6, 1.1, 0.5, M.dark, (sp.bull ? L - 4 : hx + hl - 1), top + 1.0, 0, 0.1)); } // flip-up irons fold away under an optic
+    else { g.add(box(0.8, 0.35, 1.0, M.dark, -1.5, top + 0.6, 0)); g.add(box(0.6, 0.35, 0.5, M.dark, (sp.bull ? L - 4 : hx + hl - 1), top + 0.6, 0)); }
   } else if (sp.handle) {
     const hlen = sp.handle === 'long' ? L + 2 : 9, h0 = sp.handle === 'long' ? -11 : -2.5;
     g.add(ext([[h0, top], [h0 + 0.8, top + 2.2], [h0 + hlen - 0.8, top + 2.2], [h0 + hlen, top], [h0 + hlen - 1.2, top], [h0 + hlen - 1.4, top + 1.3], [h0 + 1.4, top + 1.3], [h0 + 1.2, top]], 1.3, recMat, { bevel: 0.2 }));
@@ -3077,15 +3081,21 @@ function addAttachments(M, gun, atts, id) {
     const sx = (gun.scopeX || 0) + 1, base = gun.scopeBase;
     const o = new THREE.Group();
     if (has('reddot')) {
+      // short open tube: you look straight through it at the dot
       o.add(rbox(2.2, 0.6, 1.3, M.blued, sx, base + 0.3, 0, 0.2));
-      o.add(lathe([[-1.2, 0.75], [1.2, 0.75], [1.2, 0.55], [-1.2, 0.55]], M.blued, sx, base + 1.25, 0, 16));
-      const dot = new THREE.Mesh(new THREE.CircleGeometry(0.12, 8), M.redLens); dot.rotation.y = -Math.PI / 2; dot.position.set(sx + 1.0, base + 1.25, 0); o.add(dot);
-      gun.sightH = base + 1.25;
+      o.add(box(0.8, 0.5, 0.6, M.blued, sx, base + 0.75, 0));
+      o.add(lathe([[-1.2, 0.85], [1.2, 0.85], [1.2, 0.7], [-1.2, 0.7]], M.blued, sx, base + 1.6, 0, 20));
+      const glass = new THREE.Mesh(new THREE.CircleGeometry(0.7, 20), M.clearGlass); glass.rotation.y = Math.PI / 2; glass.position.set(sx + 1.1, base + 1.6, 0); o.add(glass);
+      gun.sightH = base + 1.6;
     } else if (has('holo')) {
-      o.add(rbox(3.4, 0.8, 1.6, M.paint, sx, base + 0.4, 0, 0.25));
-      o.add(box(0.35, 1.9, 1.6, M.paint, sx - 1.5, base + 1.5, 0)); o.add(box(0.35, 1.9, 1.6, M.paint, sx + 1.5, base + 1.5, 0)); o.add(box(3.4, 0.3, 1.6, M.paint, sx, base + 2.45, 0));
-      const win = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.3), M.glass); win.rotation.y = Math.PI / 2; win.position.set(sx + 1.5, base + 1.45, 0); o.add(win);
-      gun.sightH = base + 1.45;
+      // holographic sight: a base with an open hood (side walls along the barrel, a top bar) and a clear window
+      const hw = 2.3, hh = 1.9, len = 3.8, y0 = base + 0.9;
+      o.add(rbox(len, 0.9, hw, M.paint, sx, base + 0.45, 0, 0.25));            // body / battery housing
+      for (const z of [-1, 1]) o.add(box(len, hh, 0.22, M.paint, sx, y0 + hh / 2, z * (hw / 2 - 0.11))); // side walls
+      o.add(box(len, 0.28, hw, M.paint, sx, y0 + hh + 0.14, 0));                // top bar
+      o.add(box(0.5, 0.5, hw * 0.6, M.dark, sx - len / 2 + 0.3, base + 0.6, 0)); // rear buttons
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(hw - 0.44, hh), M.clearGlass); win.rotation.y = Math.PI / 2; win.position.set(sx + len / 2 - 0.3, y0 + hh / 2, 0); o.add(win);
+      gun.sightH = y0 + hh / 2;
     } else {
       o.add(rbox(3, 0.7, 1.4, M.blued, sx, base + 0.35, 0, 0.2));
       o.add(lathe([[-2.6, 0.9], [-1.4, 0.95], [1.6, 0.95], [2.8, 1.2], [3.2, 1.2], [3.2, 0]], M.paint, sx, base + 1.55, 0, 18));
@@ -5671,7 +5681,9 @@ function frame(now) {
     setArm(vm.lArm, tmpB.copy(vm.lHand.position).add(tmpC.set(-1.0, -0.9, -0.2)), vm.lElbow, 1.8);
     // position: hip <-> aim down sights
     const hip = G.pistol ? VM_HIP_PISTOL : VM_HIP;
-    const target = tmpA.set(-(G.sightZ || 0), -G.sightH, G.pistol ? -14 : -15.5).lerp(hip, 1 - adsT);
+    // reflex and holographic sights sit close to the eye, so the window fills more of the view
+    const adsZ = G.pistol ? -14 : st.optic === 'holo' || st.optic === 'reddot' ? -8.5 : -15.5;
+    const target = tmpA.set(-(G.sightZ || 0), -G.sightH, adsZ).lerp(hip, 1 - adsT);
     const bobA = movingNow ? (1 - adsT * 0.85) : 0;
     target.x += Math.sin(bobPhase) * 0.6 * bobA;
     target.y += Math.abs(Math.cos(bobPhase)) * 0.5 * bobA - crouchT * 0.3 + Math.sin(now / 700) * 0.12 * (1 - adsT);
@@ -5770,7 +5782,7 @@ function drawOverlay(now, players, st, scoped, ads, moving, sprint) {
     c.globalAlpha = Math.min(1, (adsT - 0.75) * 4);
     c.fillStyle = '#ff3020'; c.strokeStyle = '#ff3020'; c.lineWidth = 1.6;
     c.beginPath(); c.arc(cx, cy, 2.2, 0, TAU); c.fill();
-    if (st.optic === 'holo') { c.beginPath(); c.arc(cx, cy, 16, 0, TAU); c.stroke(); for (const a of [0, 1, 2, 3]) { const an = a * Math.PI / 2; c.beginPath(); c.moveTo(cx + Math.cos(an) * 16, cy + Math.sin(an) * 16); c.lineTo(cx + Math.cos(an) * 21, cy + Math.sin(an) * 21); c.stroke(); } }
+    if (st.optic === 'holo') { const R = Math.min(W, H) * 0.035; c.beginPath(); c.arc(cx, cy, R, 0, TAU); c.stroke(); for (const k of [0, 1, 3]) { const an = k * Math.PI / 2; c.beginPath(); c.moveTo(cx + Math.cos(an) * R, cy + Math.sin(an) * R); c.lineTo(cx + Math.cos(an) * R * 0.72, cy + Math.sin(an) * R * 0.72); c.stroke(); } }
     c.globalAlpha = 1;
   }
   if (you.alive && inGame() && !scoped) {
