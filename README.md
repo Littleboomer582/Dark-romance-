@@ -43,6 +43,9 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
 - **Detailed weapons**:
   - Each gun is modeled from shaped parts with real details: carved wood stocks, tapered barrels, sight hoods, barrel bands, trigger guards, bolt handles, and perforated barrel jackets.
   - Materials: blued and parkerized steel, varnished wood, bakelite and brass, lit by a reflection map.
+  - **AR-15 family** (M4A1, M16A1, M16A4, SCAR-H, ACR): separate upper and lower receivers, a flared magazine well, pivot and takedown pins, bolt catch, selector, ejection port with dust cover, forward assist, brass deflector, a rear T-handle that you pull on reloads, quad rails or a ribbed handguard, a triangular front sight base, a slotted birdcage, a buffer tube with castle nut, and collapsible or fixed A2 stocks.
+  - **AK family** (AK-47, AK-74u, RPK, Galil, Dragunov SVD, AN-94): a stamped receiver with a curved dust cover, rivets, a long selector lever, a charging handle on the bolt carrier, upper and lower wood handguards, a gas block, a hooded front sight and a rear sight leaf.
+  - Modern guns use anodized aluminium and textured (stippled) polymer, and magazines show the top round.
 - **Working mechanisms**:
   - Bolt-actions are cycled by your hand after each shot, and pistol slides recoil.
   - The Trench Gun pumps, the revolver cylinder swings out, and the double-barrel breaks open.

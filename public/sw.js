@@ -1,5 +1,5 @@
 // Network-first service worker: keeps the app installable and loads the shell offline.
-const CACHE = 'frontline-v12';
+const CACHE = 'frontline-v13';
 const SHELL = ['/', '/index.html', '/style.css', '/game.js', '/shared.js', '/sim.js', '/guns.js', '/vendor/three.module.min.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {

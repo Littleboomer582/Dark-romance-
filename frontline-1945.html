@@ -2293,6 +2293,13 @@ function noiseTex(seed, lo, hi) {
     for (let i = 0; i < 70; i++) { g.lineWidth = 0.5 + r(); g.beginPath(); const x = r() * w, y = r() * h; g.moveTo(x, y); g.lineTo(x + (r() - 0.5) * 60, y + (r() - 0.5) * 8); g.stroke(); }
   }, { srgb: false, repeat: [2, 2] });
 }
+function stippleTex() {
+  return canvasTex(128, 128, (g, w, h) => {
+    const r = rng(17);
+    g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 2600; i++) { const v = r() < 0.5 ? 40 : 200; g.fillStyle = `rgb(${v},${v},${v})`; g.beginPath(); g.arc(r() * w, r() * h, 0.6 + r() * 1.1, 0, TAU); g.fill(); }
+  }, { srgb: false, repeat: [0.6, 0.6] });
+}
 function checkerTex() {
   return canvasTex(128, 128, (g, w, h) => {
     g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
@@ -2369,6 +2376,9 @@ function materials() {
     beech: new THREE.MeshPhysicalMaterial({ map: beech, roughness: 0.55, clearcoat: 0.25, clearcoatRoughness: 0.5 }),
     bakelite: new THREE.MeshPhysicalMaterial({ color: 0x3b2316, roughness: 0.32, clearcoat: 0.7, clearcoatRoughness: 0.25 }),
     poly: new THREE.MeshStandardMaterial({ color: 0x1c1d1e, roughness: 0.72, metalness: 0.1, roughnessMap: roughMatte, envMapIntensity: 0.3 }),
+    alu: new THREE.MeshStandardMaterial({ color: 0x1b1c1e, roughness: 0.5, metalness: 0.65, roughnessMap: rough, envMapIntensity: 0.35 }),
+    stipple: new THREE.MeshStandardMaterial({ color: 0x1a1b1c, roughness: 0.85, metalness: 0.05, bumpMap: stippleTex(), bumpScale: 1.5, envMapIntensity: 0.2 }),
+    stippleTan: new THREE.MeshStandardMaterial({ color: 0x8a7a58, roughness: 0.85, metalness: 0.05, bumpMap: stippleTex(), bumpScale: 1.5, envMapIntensity: 0.2 }),
     polyTan: new THREE.MeshStandardMaterial({ color: 0x8a7a58, roughness: 0.75, metalness: 0.05, roughnessMap: roughMatte, envMapIntensity: 0.3 }),
     polyOd: new THREE.MeshStandardMaterial({ color: 0x4a5034, roughness: 0.75, metalness: 0.05, roughnessMap: roughMatte, envMapIntensity: 0.3 }),
     redLens: new THREE.MeshBasicMaterial({ color: 0xff3020 }),
@@ -2803,25 +2813,25 @@ function buildMG(M, id, has) {
 
 // ---- Cold War / modern weapons: one parametric builder driven by a per-gun description
 const MODERN = {
-  ak47: { len: 13, bar: 5, hg: 8, hguard: 'wood', furn: 'wood', stock: 'wood', mag: 'curved', magL: 10, curve: 0.3, gas: true, muzzle: 'slant' },
-  m16a1: { len: 15, bar: 7, hg: 9, hguard: 'round', stock: 'fixed', mag: 'straight', magL: 8, handle: 'carry', muzzle: 'bird' },
+  ak47: { style: 'ak', len: 13, bar: 5, hg: 8, hguard: 'wood', furn: 'wood', stock: 'wood', mag: 'curved', magL: 10, curve: 0.3, gas: true, muzzle: 'slant' },
+  m16a1: { style: 'ar', fsb: true, len: 15, bar: 7, hg: 9, hguard: 'ribbed', stock: 'a2', mag: 'straight', magL: 8, handle: 'carry', muzzle: 'bird' },
   famas: { bull: true, len: 16, bar: 6, mag: 'straight', magL: 7, handle: 'long', muzzle: 'bird' },
-  galil: { len: 14, bar: 6, hg: 8, hguard: 'wood', stock: 'fold', mag: 'curved', magL: 10, curve: 0.25, gas: true },
+  galil: { style: 'ak', len: 14, bar: 6, hg: 8, hguard: 'wood', stock: 'fold', mag: 'curved', magL: 10, curve: 0.25, gas: true },
   aug: { bull: true, len: 17, bar: 7, furn: 'od', mag: 'straight', magL: 8, muzzle: 'bird', vgrip: true },
   fal: { len: 16, bar: 8, hg: 9, hguard: 'square', stock: 'fixed', mag: 'straight', magL: 7, magW: 3.2, muzzle: 'bird', recH: 1.3 },
   m14: { len: 14, bar: 10, hg: 12, hguard: 'wood', furn: 'wood', stock: 'wood', mag: 'straight', magL: 6, magW: 3.2, recMat: 'park' },
-  m4a1: { len: 14, bar: 4, hg: 8, hguard: 'square', rail: true, stock: 'tube', mag: 'straight', magL: 9, curve: 0.06, muzzle: 'bird' },
-  m16a4: { len: 15, bar: 8, hg: 9, hguard: 'square', rail: true, stock: 'fixed', mag: 'straight', magL: 9, curve: 0.06, muzzle: 'bird' },
-  scarh: { len: 15, bar: 5, hg: 9, hguard: 'square', rail: true, furn: 'tan', stock: 'fold', mag: 'straight', magL: 7, magW: 3.2, recMat: 'poly' },
-  acr: { len: 15, bar: 5, hg: 9, hguard: 'square', rail: true, stock: 'skeleton', mag: 'straight', magL: 9, recMat: 'poly' },
+  m4a1: { style: 'ar', fsb: true, len: 14, bar: 4, hg: 8, hguard: 'quad', rail: true, stock: 'collapsible', mag: 'straight', magL: 9, curve: 0.06, muzzle: 'bird' },
+  m16a4: { style: 'ar', fsb: true, len: 15, bar: 8, hg: 9, hguard: 'quad', rail: true, stock: 'a2', mag: 'straight', magL: 9, curve: 0.06, muzzle: 'bird' },
+  scarh: { style: 'ar', len: 15, bar: 5, hg: 9, hguard: 'quad', rail: true, furn: 'tan', stock: 'fold', mag: 'straight', magL: 7, magW: 3.2, recMat: 'poly' },
+  acr: { style: 'ar', len: 15, bar: 5, hg: 9, hguard: 'mlok', rail: true, stock: 'skeleton', mag: 'straight', magL: 9, recMat: 'poly' },
   tar21: { bull: true, len: 16, bar: 5, mag: 'straight', magL: 9, rail: true, muzzle: 'bird' },
   f2000: { bull: true, len: 17, bar: 4, mag: 'straight', magL: 9, rail: true, smooth: true },
-  an94: { len: 15, bar: 6, hg: 8, hguard: 'square', stock: 'skeleton', mag: 'curved', magL: 10, curve: 0.28, muzzle: 'brake', rail: true },
+  an94: { style: 'ak', len: 15, bar: 6, hg: 8, hguard: 'square', stock: 'skeleton', mag: 'curved', magL: 10, curve: 0.28, muzzle: 'brake', rail: true },
   xm8: { len: 15, bar: 4, hg: 9, hguard: 'round', furn: 'tan', stock: 'fixed', mag: 'curved', magL: 9, curve: 0.15, recMat: 'poly', rail: true },
   mp5k: { len: 11, bar: 2, hg: 4, hguard: 'square', stock: 'none', mag: 'curved', magL: 9, curve: 0.2, vgrip: true },
   uzi: { len: 11, bar: 3, hg: 0, stock: 'fold', mag: 'grip', recH: 1.4 },
   skorpion: { len: 9, bar: 3, hg: 0, stock: 'wire', mag: 'curved', magL: 7, curve: 0.35, magX: 4 },
-  ak74u: { len: 11, bar: 3, hg: 5, hguard: 'wood', furn: 'wood', stock: 'fold', mag: 'curved', magL: 10, curve: 0.3, gas: true, muzzle: 'big' },
+  ak74u: { style: 'ak', len: 11, bar: 3, hg: 5, hguard: 'wood', furn: 'wood', stock: 'fold', mag: 'curved', magL: 10, curve: 0.3, gas: true, muzzle: 'big' },
   mac11: { len: 7, bar: 2, hg: 0, stock: 'none', mag: 'grip', recH: 1.6 },
   mp7: { len: 10, bar: 3, hg: 3, hguard: 'square', rail: true, stock: 'tube', mag: 'grip', recMat: 'poly', vgrip: true },
   vector: { len: 12, bar: 3, hg: 4, hguard: 'square', rail: true, stock: 'fold', mag: 'straight', magL: 7, magX: 4.5, recMat: 'poly', recH: 1.6 },
@@ -2829,14 +2839,14 @@ const MODERN = {
   ump45: { len: 13, bar: 3, hg: 5, hguard: 'square', stock: 'fold', mag: 'straight', magL: 9, recMat: 'poly', rail: true },
   pp2000: { len: 9, bar: 2, hg: 0, stock: 'none', mag: 'grip', recMat: 'poly' },
   m60: { len: 18, bar: 12, hg: 8, hguard: 'round', furn: 'od', stock: 'fixed', mag: 'belt', recMat: 'park', bipod: true },
-  rpk: { len: 14, bar: 10, hg: 8, hguard: 'wood', furn: 'wood', stock: 'wood', mag: 'curved', magL: 12, curve: 0.3, gas: true, bipod: true },
+  rpk: { style: 'ak', len: 14, bar: 10, hg: 8, hguard: 'wood', furn: 'wood', stock: 'wood', mag: 'curved', magL: 12, curve: 0.3, gas: true, bipod: true },
   stoner63: { len: 16, bar: 9, hg: 8, hguard: 'round', stock: 'fixed', mag: 'belt' },
   rpd: { len: 16, bar: 12, hg: 9, hguard: 'wood', furn: 'wood', stock: 'wood', mag: 'drum', bipod: true },
   mg4: { len: 17, bar: 9, hg: 7, hguard: 'square', rail: true, stock: 'skeleton', mag: 'belt', recMat: 'poly', bipod: true },
   lsat: { len: 16, bar: 9, hg: 8, hguard: 'square', rail: true, stock: 'tube', mag: 'belt' },
   l86: { bull: true, len: 17, bar: 10, mag: 'straight', magL: 9, rail: true, bipod: true },
   l96: { len: 14, bar: 16, hg: 12, hguard: 'square', furn: 'od', stock: 'thumb', mag: 'straight', magL: 4, bolt: true },
-  svd: { len: 14, bar: 14, hg: 9, hguard: 'wood', furn: 'wood', stock: 'thumb', mag: 'straight', magL: 5, curve: 0.1, gas: true, muzzle: 'slant' },
+  svd: { style: 'ak', len: 14, bar: 14, hg: 9, hguard: 'wood', furn: 'wood', stock: 'thumb', mag: 'straight', magL: 5, curve: 0.1, gas: true, muzzle: 'slant' },
   wa2000: { bull: true, len: 20, bar: 10, furn: 'wood', mag: 'straight', magL: 5 },
   psg1: { len: 16, bar: 12, hg: 10, hguard: 'square', stock: 'fixed', mag: 'straight', magL: 5 },
   m200: { len: 15, bar: 18, hg: 12, hguard: 'round', stock: 'skeleton', mag: 'straight', magL: 4, bolt: true, muzzle: 'brake' },
@@ -2849,6 +2859,70 @@ const MODERN = {
   m1014: { len: 13, bar: 13, hg: 7, hguard: 'round', stock: 'tube', mag: 'none', tube: true, shell: true },
   m1887: { len: 11, bar: 16, hg: 0, furn: 'wood', stock: 'wood', mag: 'none', tube: true, pump: true, shell: true, lever: true },
 };
+// Picatinny rail: a base with raised cross-slot teeth
+function picRail(M, g, len, x0, y, z, rotX) {
+  const r = new THREE.Group();
+  r.add(box(len, 0.35, 1.05, M.alu, len / 2, 0, 0));
+  for (let x = 0.3; x < len - 0.2; x += 0.62) r.add(box(0.38, 0.22, 1.12, M.alu, x, 0.27, 0));
+  r.position.set(x0, y, z); r.rotation.x = rotX || 0;
+  g.add(r);
+}
+// AR-15 family: separate upper and lower, magwell, pins, port, forward assist, rear charging handle
+function arReceiver(M, g, sp, B, top, L, charger, has) {
+  const metal = sp.recMat === 'poly' ? (sp.furn === 'tan' ? M.stippleTan : M.poly) : M.alu;
+  // lower: trigger area + flared magazine well
+  g.add(ext([[-3, B - 0.25], [-3, 0.3], [-2.2, -0.2], [3.4, -0.2], [3.6, -1.1], [3.9, -1.45], [7.6, -1.45], [7.9, -1.1], [8.1, -0.2], [9, 0.6], [9, B - 0.25]], 2.3, metal, { bevel: 0.25 }));
+  // upper: flat-top body
+  g.add(ext([[-3.3, B - 0.25], [L - 3, B - 0.25], [L - 3, top - 0.15], [-3.3, top - 0.15]], 2.15, metal, { bevel: 0.2 }));
+  // ejection port with dust cover (right side) and brass deflector
+  g.add(box(3.4, 0.75, 0.12, M.dark, 3.6, B + 0.35, 1.08));
+  g.add(box(3.6, 0.85, 0.06, metal, 3.6, B - 0.2, 1.12));
+  g.add(rbox(0.7, 0.8, 0.5, metal, 1.6, B + 0.55, 1.15, 0.2));
+  // forward assist (right rear)
+  const fa = tube(0.42, 1.5, metal, -2.6, B + 0.55, 1.2); fa.rotation.y = -0.35; g.add(fa);
+  g.add(sphere(0.48, M.alu, -2.9, B + 0.55, 1.35));
+  // left side: bolt catch, selector, pivot / takedown pins, mag release (right)
+  g.add(rbox(1.2, 0.5, 0.2, metal, 3.0, 0.6, -1.25, 0.1));
+  const sel = rbox(1.2, 0.35, 0.18, M.blued, 0.2, B - 0.75, -1.26, 0.08); sel.rotation.z = 0.25; g.add(sel);
+  for (const [x, y] of [[-1.8, B - 0.6], [7.8, B - 0.45]]) { g.add(mesh(new THREE.CylinderGeometry(0.28, 0.28, 2.5, 10).rotateX(Math.PI / 2), M.blued, x, y, 0)); }
+  g.add(mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.3, 12).rotateX(Math.PI / 2), M.blued, 3.4, 0.4, 1.2));
+  // trigger guard (part of the lower on an AR)
+  g.add(ext([[-0.6, -0.2], [3.2, -0.2], [3.2, -0.55], [2.6, -1.4], [0, -1.4], [-0.6, -0.55]], 0.4, metal, { bevel: 0.1 }));
+  const trig = ext([[0, 0], [0.32, 0], [0.12, -0.95], [-0.25, -1.15], [-0.08, -0.85]], 0.32, M.blued, { bevel: 0.06 }); trig.position.set(1.4, -0.2, 0); g.add(trig);
+  // A2-style pistol grip with a finger groove bump
+  g.add(pistolGrip(M, 0.6, -0.25, M.stipple, 5.2, 1.1));
+  const fg = new THREE.SphereGeometry(0.45, 10, 8); fg.scale(1, 1, 2.2);
+  g.add(mesh(fg, M.stipple, 1.25, -2.9, 0));
+  // rear T charging handle (pulled back at the end of a reload)
+  charger.add(box(1.6, 0.35, 0.9, M.alu, -3.6, top - 0.35, 0));
+  charger.add(box(0.5, 0.4, 2.6, M.alu, -4.3, top - 0.35, 0));
+  // buffer tube + castle nut for AR stocks
+  if (sp.stock === 'collapsible' || sp.stock === 'a2') {
+    g.add(ring(0.82, 0.18, M.blued, -3.4, B + 0.25, 0));
+    if (sp.stock === 'collapsible') g.add(tube(0.7, 9, M.alu, -12.4, B + 0.25, 0));
+  }
+}
+// AK family: stamped receiver, curved dust cover, rivets, long selector, carrier charging handle
+function akReceiver(M, g, sp, B, top, L, charger, furnWood) {
+  g.add(ext([[-3, B + 0.4], [-3, 0.1], [-2.4, -0.25], [L - 3.2, -0.25], [L - 3, 0.2], [L - 3, B + 0.4]], 2.2, M.blued, { bevel: 0.18 }));
+  const cover = new THREE.CylinderGeometry(1.1, 1.1, L - 1.2, 18, 1, false, Math.PI, Math.PI); cover.rotateZ(-Math.PI / 2);
+  g.add(mesh(cover, M.blued2, -3 + (L - 1.2) / 2, B + 0.4, 0));
+  g.add(box(0.8, 0.6, 2.25, M.blued, -2.6, B + 0.6, 0)); // rear of dust cover / latch
+  g.add(rbox(2.2, 1.2, 2.3, M.blued, L - 3.6, B + 0.6, 0, 0.2)); // front trunnion
+  for (const x of [-1.8, -0.8, 6.8, 8.4, L - 4.2]) for (const sd of [-1, 1]) g.add(sphere(0.13, M.bright, x, 0.4, sd * 1.12)); // rivets
+  // selector lever (right side) and charging handle on the bolt carrier
+  const sel = box(6.2, 0.35, 0.18, M.blued, 2.6, B - 0.05, 1.2); sel.rotation.z = -0.06; g.add(sel);
+  g.add(box(0.8, 1.0, 0.2, M.blued, -0.5, B - 0.4, 1.2));
+  charger.add(box(1.6, 0.35, 0.4, M.bright, L - 5.5, B + 0.4, 1.25));
+  charger.add(sphere(0.38, M.bright, L - 4.8, B + 0.4, 1.55));
+  // rear sight leaf block on the trunnion
+  g.add(rbox(1.8, 0.7, 1.4, M.blued, L - 2.4, top - 0.1, 0, 0.15));
+  // trigger guard (flat steel)
+  g.add(ext([[-0.4, -0.25], [3.4, -0.25], [3.4, -0.5], [2.8, -1.3], [0, -1.3], [-0.4, -0.55]], 0.35, M.blued, { bevel: 0.08 }));
+  const trig = ext([[0, 0], [0.32, 0], [0.12, -0.95], [-0.25, -1.15], [-0.08, -0.85]], 0.32, M.blued, { bevel: 0.06 }); trig.position.set(1.4, -0.25, 0); g.add(trig);
+  g.add(pistolGrip(M, 0.6, -0.25, furnWood ? M.bakelite : M.stipple, 5.0, 1.0));
+}
+
 function buildModern(M, id, has) {
   const sp = MODERN[id];
   const B = 1.8, g = new THREE.Group(), charger = new THREE.Group();
@@ -2857,11 +2931,36 @@ function buildModern(M, id, has) {
   const L = sp.len, top = B + (sp.recH || 1.1);
   let leftHand, magX, rightHand, hx, hl = sp.hg || 0;
   if (!sp.bull) {
-    g.add(ext([[-3, -0.3], [L - 3, -0.3], [L - 3, top - 0.25], [L - 3.6, top], [-2.2, top], [-3, top - 0.6]], 2.5, recMat, { bevel: 0.35 }));
-    g.add(pistolGrip(M, 0.6, -0.2, sp.furn === 'wood' ? M.walnut : M.poly, 5.4, 0.8));
-    g.add(triggerGroup(M, 1.7, -0.35, recMat));
+    if (sp.style === 'ar') arReceiver(M, g, sp, B, top, L, charger, has);
+    else if (sp.style === 'ak') akReceiver(M, g, sp, B, top, L, charger, sp.furn === 'wood');
+    else {
+      g.add(ext([[-3, -0.3], [L - 3, -0.3], [L - 3, top - 0.25], [L - 3.6, top], [-2.2, top], [-3, top - 0.6]], 2.5, recMat, { bevel: 0.35 }));
+      g.add(box(3.0, 0.7, 0.1, M.dark, 3.4, B + 0.35, 1.28)); // ejection port
+      g.add(pistolGrip(M, 0.6, -0.2, sp.furn === 'wood' ? M.walnut : M.stipple, 5.4, 0.8));
+      g.add(triggerGroup(M, 1.7, -0.35, recMat));
+    }
     hx = L - 3;
-    if (sp.hguard === 'wood') g.add(ext([[hx, B - 1.25], [hx + hl, B - 1.0], [hx + hl, B + 0.85], [hx, B + 0.95]], 2.5, M.walnut, { bevel: 0.5 }));
+    if (sp.hguard === 'wood' && sp.style === 'ak') { // AK: lower handguard + upper handguard over the gas tube
+      g.add(ext([[hx, B - 1.25], [hx + hl, B - 1.05], [hx + hl, B + 0.3], [hx, B + 0.35]], 2.5, M.walnut, { bevel: 0.5 }));
+      g.add(ext([[hx + 0.4, B + 0.75], [hx + hl * 0.7, B + 0.75], [hx + hl * 0.7 + 0.4, B + 1.55], [hx + 0.2, B + 1.6]], 1.6, M.walnut, { bevel: 0.4 }));
+      for (let i = 0; i < 3; i++) g.add(box(0.15, 0.9, 2.55, M.dark, hx + 1.5 + i * 1.3, B - 0.5, 0)); // finger grooves
+    }
+    else if (sp.hguard === 'wood') g.add(ext([[hx, B - 1.25], [hx + hl, B - 1.0], [hx + hl, B + 0.85], [hx, B + 0.95]], 2.5, M.walnut, { bevel: 0.5 }));
+    else if (sp.hguard === 'quad') { // quad rail: rails on top, bottom and both sides
+      g.add(rbox(hl, 2.1, 2.1, M.alu, hx + hl / 2, B, 0, 0.3));
+      picRail(M, g, hl, hx, B + 1.2, 0); picRail(M, g, hl - 1, hx + 0.5, B - 1.2, 0, Math.PI);
+      picRail(M, g, hl - 1.5, hx + 0.7, B, 1.2, Math.PI / 2); picRail(M, g, hl - 1.5, hx + 0.7, B, -1.2, -Math.PI / 2);
+    } else if (sp.hguard === 'mlok') { // slim octagonal free-float handguard with slots
+      const hg = new THREE.CylinderGeometry(1.25, 1.25, hl, 8); hg.rotateZ(-Math.PI / 2); hg.rotateX(Math.PI / 8);
+      g.add(mesh(hg, M.alu, hx + hl / 2, B, 0));
+      for (let i = 0; i < Math.floor(hl / 1.6); i++) for (const sd of [-1, 1]) g.add(rbox(1.0, 0.45, 0.1, M.dark, hx + 0.9 + i * 1.6, B - 0.3, sd * 1.2, 0.1));
+    } else if (sp.hguard === 'ribbed') { // classic round, ribbed handguard
+      const pts = [[0, 1.0], [0.3, 1.3]];
+      for (let x = 0.6; x < hl - 0.4; x += 0.6) pts.push([x, 1.32], [x + 0.3, 1.22]);
+      pts.push([hl - 0.3, 1.3], [hl, 1.0], [hl, 0]);
+      g.add(lathe(pts, M.poly, hx, B, 0, 18));
+      g.add(ring(1.05, 0.22, M.alu, hx, B, 0)); // delta ring
+    }
     else if (sp.hguard === 'round') g.add(tube(1.25, hl, furn, hx, B, 0, 1.15, 16));
     else if (sp.hguard === 'square') g.add(rbox(hl, 2.3, 2.5, sp.rail ? recMat : furn, hx + hl / 2, B, 0, 0.4));
     magX = sp.magX != null ? sp.magX : 5.5;
@@ -2870,6 +2969,13 @@ function buildModern(M, id, has) {
     if (sp.stock === 'wood') g.add(buttstock(M, { len: 13, top: top - 0.2, h: 4.6, drop: 1.0, mat: M.walnut }));
     else if (sp.stock === 'fixed') g.add(buttstock(M, { len: 13, top: top - 0.2, h: 4.4, drop: 0.5, mat: furn }));
     else if (sp.stock === 'thumb') { g.add(buttstock(M, { len: 13, top: top + 0.4, h: 5.2, drop: 0.3, mat: furn })); g.add(rbox(4, 1.6, 2.7, M.dark, -8, top - 1.8, 0, 0.5)); }
+    else if (sp.stock === 'a2') g.add(ext([[-3.6, top - 0.35], [-16.5, top - 0.7], [-16.5, -2.9], [-15.6, -2.95], [-6.5, 0.6], [-3.6, B - 0.6]], 2.3, M.stipple, { bevel: 0.5 }));
+    else if (sp.stock === 'collapsible') {
+      g.add(ext([[-14.4, B + 1.15], [-9.6, B + 1.0], [-9.4, B - 0.55], [-10.6, B - 0.8], [-13.2, -1.7], [-14.4, -2.2]], 2.3, M.stipple, { bevel: 0.45 }));
+      g.add(box(0.6, B + 3.3, 2.4, M.poly, -14.5, (B + 1.15 - 2.2) / 2, 0)); // rubber butt pad
+      g.add(rbox(3.2, 0.5, 1.2, M.poly, -11.5, B - 0.8, 0, 0.15)); // adjustment latch
+      g.add(box(0.5, 1.2, 2.4, M.dark, -12.4, -1.2, 0)); // sling slot
+    }
     else if (sp.stock === 'tube') { g.add(tube(0.75, 8, M.blued, -11, top - 0.9, 0)); g.add(ext([[-15, top + 0.1], [-9.5, top + 0.1], [-9.5, top - 1.7], [-12, -2.2], [-15, -2.3]], 2.3, furn, { bevel: 0.4 })); }
     else if (sp.stock === 'skeleton') { g.add(tube(0.35, 12, M.blued, -15, top - 0.5, 0)); g.add(tube(0.35, 11, M.blued, -14, -1.2, 0)); g.add(rbox(1, 4.8, 2.2, furn, -15, top - 2.6, 0, 0.3)); }
     else if (sp.stock === 'fold') { g.add(rbox(12, 1.6, 0.7, furn, -3 - 6, top - 1.5, -1.6, 0.3)); g.add(rbox(1, 4.2, 0.7, furn, -14.5, top - 3.1, -1.6, 0.2)); }
@@ -2890,13 +2996,32 @@ function buildModern(M, id, has) {
   if (sp.vgrip && !sp.bull) { const fg = ext([[-0.9, 0], [0.9, 0], [0.8, -4.2], [-0.8, -4.2]], 1.6, M.poly, { bevel: 0.5 }); fg.position.set(hx + Math.max(1.5, hl * 0.5), B - 1.2, 0); g.add(fg); leftHand = V(hx + Math.max(1.5, hl * 0.5), B - 3.2, -0.3); }
   // barrel + muzzle
   let muzzleX = hx + hl + sp.bar;
-  g.add(lathe([[0, sp.bulky ? 0.6 : 0.68], [hl + sp.bar, 0.58], [hl + sp.bar, 0]], M.blued, hx, B, 0, 16));
+  if (sp.style) g.add(lathe([[0, 0.72], [hl * 0.55, 0.7], [hl * 0.55, 0.58], [hl + sp.bar * 0.4, 0.56], [hl + sp.bar * 0.4, 0.5], [hl + sp.bar, 0.48], [hl + sp.bar, 0]], M.blued, hx, B, 0, 18));
+  else g.add(lathe([[0, sp.bulky ? 0.6 : 0.68], [hl + sp.bar, 0.58], [hl + sp.bar, 0]], M.blued, hx, B, 0, 16));
   if (sp.gas) { g.add(tube(0.55, Math.max(4, hl * 0.85), recMat, hx, B + 1.0, 0)); g.add(rbox(1.0, 1.4, 1.4, recMat, hx + Math.max(4, hl * 0.85), B + 0.5, 0, 0.2)); }
   if (sp.tube) { g.add(tube(0.6, sp.bar * 0.85 + hl, M.blued, hx, B - 1.4, 0)); if (sp.twin) g.add(tube(0.6, sp.bar * 0.85, M.blued, hx, B - 1.4, 1.3)); }
-  if (sp.muzzle === 'bird') { g.add(lathe([[0, 0.55], [1.6, 0.75], [1.6, 0.4]], M.dark, muzzleX, B, 0, 12)); muzzleX += 1.6; }
+  if (sp.muzzle === 'bird') { // birdcage flash hider with slots
+    g.add(lathe([[0, 0.6], [0.4, 0.7], [2.0, 0.7], [2.2, 0.5], [2.2, 0.35]], M.dark, muzzleX, B, 0, 14));
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * TAU + 0.6; if (a > Math.PI * 1.25 && a < Math.PI * 1.75) continue; g.add(box(1.3, 0.16, 0.16, M.alu, muzzleX + 1.2, B + Math.sin(a) * 0.7, Math.cos(a) * 0.7)); }
+    muzzleX += 2.2;
+  }
   else if (sp.muzzle === 'brake') { g.add(rbox(3, 1.5, 2.2, M.dark, muzzleX + 1.5, B, 0, 0.3)); for (let i = 0; i < 3; i++) g.add(box(0.3, 1.6, 2.3, M.paint, muzzleX + 0.6 + i * 0.9, B, 0)); muzzleX += 3; }
   else if (sp.muzzle === 'slant') { g.add(lathe([[0, 0.6], [1.4, 0.6], [1.6, 0.3]], M.blued, muzzleX, B, 0, 12)); muzzleX += 1.6; }
   else if (sp.muzzle === 'big') { g.add(lathe([[0, 0.7], [0.4, 1.0], [2.4, 1.0], [2.4, 0.4]], M.blued, muzzleX, B, 0, 14)); muzzleX += 2.4; }
+  if (sp.fsb && sp.style === 'ar') { // triangular front sight base with bayonet lug
+    const fx = hx + hl + 0.3;
+    g.add(ext([[-0.7, B - 0.8], [0.7, B - 0.8], [0.35, B + 2.0], [-0.35, B + 2.0]], 1.2, M.blued, { bevel: 0.15 }));
+    g.children[g.children.length - 1].position.x = fx;
+    if (!sp.handle) { for (const sd of [-1, 1]) g.add(box(0.45, 1.0, 0.14, M.blued, fx, B + 2.3, sd * 0.42)); g.add(box(0.16, 0.9, 0.16, M.dark, fx, B + 1.8, 0)); }
+    g.add(box(1.2, 0.5, 0.6, M.blued, fx, B - 1.1, 0));
+  }
+  if (sp.style === 'ak') { // AK gas block and hooded front sight
+    const fx = hx + hl;
+    g.add(rbox(1.4, 1.0, 1.4, M.blued, fx + 0.2, B + 0.9, 0, 0.25));
+    g.add(rbox(1.0, 0.8, 1.4, M.blued, fx + sp.bar - 0.8, B + 0.3, 0, 0.2));
+    for (const sd of [-1, 1]) g.add(box(0.5, 2.0, 0.15, M.blued, fx + sp.bar - 0.8, B + 1.6, sd * 0.45)); // sight ears
+    g.add(box(0.15, 1.6, 0.15, M.dark, fx + sp.bar - 0.8, B + 1.35, 0)); // front post, tip at B + 2.15
+  }
   if (sp.bipod) for (const sd of [-1, 1]) { const leg = new THREE.Group(); leg.position.set(hx + hl + sp.bar * 0.5, B - 0.6, sd * 0.8); leg.add(tube(0.25, 7, M.blued, 0, 0, 0)); leg.rotation.set(sd * 0.12, 0, -1.2); g.add(leg); } // folded down
   // top rail / carry handle / sights
   let sightH, scopeBase = top + 0.25;
@@ -2905,14 +3030,27 @@ function buildModern(M, id, has) {
     const railLen = (sp.bull ? L - 2 : L + hl - 2);
     g.add(box(railLen, 0.45, 1.2, M.blued, (sp.bull ? -6 : -2) + railLen / 2, top + 0.22, 0));
     for (let x = 0; x < railLen; x += 0.9) g.add(box(0.35, 0.2, 1.25, M.dark, (sp.bull ? -6 : -2) + x, top + 0.48, 0));
-    scopeBase = top + 0.45; sightH = top + 1.5;
-    if (!optic) { g.add(rbox(0.8, 1.1, 1.0, M.dark, -1.5, top + 1.0, 0, 0.15)); g.add(rbox(0.6, 1.1, 0.5, M.dark, (sp.bull ? L - 4 : hx + hl - 1), top + 1.0, 0, 0.1)); } // flip-up irons fold away under an optic
+    scopeBase = top + 0.45; sightH = sp.fsb ? B + 2.25 : top + 1.5;
+    if (!optic) { // flip-up irons (rear aperture + front post); they fold away under an optic
+      g.add(box(0.8, sightH - top - 0.8, 1.1, M.dark, -1.5, (top + 0.45 + sightH - 0.35) / 2, 0));
+      g.add(ring(0.36, 0.12, M.dark, -1.5, sightH, 0));
+      if (!sp.fsb) { const fx = sp.bull ? L - 4 : hx + hl - 1; g.add(box(0.6, 0.7, 1.0, M.dark, fx, top + 0.8, 0)); for (const sd of [-1, 1]) g.add(box(0.5, 1.0, 0.15, M.dark, fx, sightH - 0.3, sd * 0.42)); g.add(box(0.16, 0.9, 0.16, M.dark, fx, sightH - 0.45, 0)); }
+    }
     else { g.add(box(0.8, 0.35, 1.0, M.dark, -1.5, top + 0.6, 0)); g.add(box(0.6, 0.35, 0.5, M.dark, (sp.bull ? L - 4 : hx + hl - 1), top + 0.6, 0)); }
   } else if (sp.handle) {
     const hlen = sp.handle === 'long' ? L + 2 : 9, h0 = sp.handle === 'long' ? -11 : -2.5;
     g.add(ext([[h0, top], [h0 + 0.8, top + 2.2], [h0 + hlen - 0.8, top + 2.2], [h0 + hlen, top], [h0 + hlen - 1.2, top], [h0 + hlen - 1.4, top + 1.3], [h0 + 1.4, top + 1.3], [h0 + 1.2, top]], 1.3, recMat, { bevel: 0.2 }));
     sightH = top + 2.45; scopeBase = top + 2.3;
-    g.add(box(0.25, top + 2.45 - B - 0.4, 0.3, M.dark, muzzleX - 2, (top + 2.45 + B + 0.4) / 2, 0));
+    if (sp.fsb) { // tall A1 front sight post on the triangular base
+      const fx = hx + hl + 0.3;
+      g.add(ext([[-0.35, B + 2.0], [0.35, B + 2.0], [0.25, sightH - 0.6], [-0.25, sightH - 0.6]], 1.0, M.blued, { bevel: 0.1 })); g.children[g.children.length - 1].position.x = fx;
+      for (const sd of [-1, 1]) g.add(box(0.45, 0.9, 0.14, M.blued, fx, sightH - 0.35, sd * 0.42));
+      g.add(box(0.16, 0.8, 0.16, M.dark, fx, sightH - 0.4, 0));
+      g.add(ring(0.32, 0.12, M.dark, h0 + 1.2, sightH, 0)); g.add(box(0.8, 0.3, 1.0, recMat, h0 + 1.2, top + 2.25, 0)); // rear aperture
+    } else g.add(box(0.25, top + 2.45 - B - 0.4, 0.3, M.dark, muzzleX - 2, (top + 2.45 + B + 0.4) / 2, 0));
+  } else if (sp.style === 'ak') {
+    sightH = B + 2.15; // front post tip and the rear leaf notch line up above the upper handguard
+    g.add(rearNotch(M, L - 2.4, top - 0.1, sightH, 1.3));
   } else {
     sightH = top + 0.8;
     g.add(rearNotch(M, 0.5, top - 0.2, sightH, 1.2));
@@ -2923,7 +3061,8 @@ function buildModern(M, id, has) {
   const magW = sp.magW || 2.6;
   if (sp.mag === 'curved' || sp.mag === 'straight') {
     const mL = (sp.magL || 8) * (has('extmag') ? 1.4 : 1);
-    mag = magazine(M, mL, magW, 1.7, sp.mag === 'curved' ? sp.curve : sp.curve || 0, sp.furn === 'tan' ? M.polyTan : M.paint);
+    mag = magazine(M, mL, magW, 1.7, sp.mag === 'curved' ? sp.curve : sp.curve || 0, sp.furn === 'tan' ? M.stippleTan : sp.style === 'ak' ? M.blued2 : sp.style === 'ar' ? M.alu : M.paint);
+    if (sp.style) { mag.add(box(magW * 0.55, 0.3, 0.9, M.brass, 0.1, 0.25, 0)); mag.add(box(0.35, 0.25, 0.6, M.copper, magW * 0.3, 0.27, 0)); } // top round
     if (has('dualmag')) { const m2 = magazine(M, mL, magW, 1.7, sp.curve || 0, M.paint); m2.position.z = 1.9; mag.add(m2); mag.add(rbox(magW + 0.4, 1.3, 3.8, M.canvas, 0.3, -mL * 0.4, 0.95, 0.2)); }
     mag.position.set(magX, -0.3, 0);
   } else if (sp.mag === 'grip') { mag = new THREE.Group(); mag.add(rbox(2.2, 0.8 + (has('extmag') ? 2.5 : 0), 1.6, M.paint, -0.9, -6.0 - (has('extmag') ? 1.2 : 0), 0, 0.15)); }
@@ -2950,7 +3089,7 @@ function buildModern(M, id, has) {
     else { pump.add(lathe([[0, 1.05], [0.4, 1.2], [5.6, 1.2], [6, 1.05], [6, 0]], sp.furn === 'wood' ? M.walnut : M.poly, 0, 0, 0, 18)); pump.position.set(8.5, B - 1.35, 0); }
     g.add(pump); parts.pump = pump; action = 'pump';
     if (!sp.lever) leftHand = V(11.5, B - 2.7, -0.3);
-  } else charger.add(rbox(0.9, 0.7, 1.3, M.bright, Math.min(L - 5, 5), top - 0.3, 1.5, 0.2));
+  } else if (!sp.style) charger.add(rbox(0.9, 0.7, 1.3, M.bright, Math.min(L - 5, 5), top - 0.3, 1.5, 0.2));
   g.add(charger);
   const out = finish(g, { muzzle: V(muzzleX, B, 0), sightH, B, leftHand, rightHand, ejectPort: V(sp.bull ? -4 : 3, B + 0.8, 1.2), action, parts, scopeX: sp.bull ? -4 : 0, scopeBase, magPos: mag ? mag.position.clone() : undefined, shell: !!sp.shell, beltFed: sp.mag === 'belt', railed: !!sp.rail || !!sp.handle });
   return out;
