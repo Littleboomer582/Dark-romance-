@@ -126,6 +126,11 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
 #ksPanel .ks-line { background: rgba(0,0,0,.5); padding: 3px 8px; border-radius: 5px; font-weight: normal; }
 #ksPanel .ks-line b { color: #ffe2a4; }
 #ksPanel .ks-on { color: #a8e08a; }
+#ksPanel .ks-bad { color: #ff9a8a; }
+#ptsPop { position: absolute; top: 56%; left: 50%; transform: translateX(-50%); font-size: 17px; color: #ffe2a4; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+#ptsPop.pop { animation: ptsrise 1.6s ease-out forwards; }
+@keyframes ptsrise { 0% { opacity: 0; transform: translate(-50%, 8px) scale(.9); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1.08); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -14px); } }
+.ks-pick button { font-size: 12px; }
 #ksPanel .ks-btn { background: linear-gradient(#8a6a2a, #5d4719); color: #fff4d6; border: 1px solid #c79a45; border-radius: 6px; padding: 6px 10px; font-weight: bold; font-size: 13px; animation: blink 1.2s infinite; }
 @media (pointer: coarse) { #ksPanel { bottom: auto; top: max(110px, calc(env(safe-area-inset-top) + 104px)); left: max(176px, calc(env(safe-area-inset-left) + 168px)); } }
 #modeLabel { position: absolute; top: max(52px, calc(env(safe-area-inset-top) + 46px)); left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); letter-spacing: 1px; white-space: nowrap; }

@@ -24,10 +24,12 @@ const DEFAULT_BINDS = {
 const BIND_LABELS = {
   forward: 'Move forward', back: 'Move back', left: 'Move left', right: 'Move right', jump: 'Jump', sprint: 'Sprint',
   crouch: 'Crouch / slide (hold: prone)', prone: 'Prone', holdCrouch: 'Hold to crouch', reload: 'Reload', swap: 'Switch weapon',
-  grenade: 'Throw grenade', melee: 'Melee', rifleNade: 'Rifle grenade', ks1: 'Recon Plane', ks2: 'Airstrike', ks3: 'Mortar Barrage',
+  grenade: 'Throw grenade', melee: 'Melee', rifleNade: 'Rifle grenade', ks1: 'Scorestreak 1', ks2: 'Scorestreak 2', ks3: 'Scorestreak 3',
   scores: 'Scoreboard', loadout: 'Change loadout',
 };
-const KS_BIND = { recon: 'ks1', air: 'ks2', mortar: 'ks3' };
+// keys 5/6/7 fire your 1st/2nd/3rd chosen scorestreak
+const myStreakList = () => (you && you.ksl) || loadout.streaks;
+const ksKey = (id) => keyName(settings.binds['ks' + (myStreakList().indexOf(id) + 1)]);
 const settings = Object.assign({ adsSens: 1, invertY: false, fov: isTouch ? 70 : 75, volume: 0.8, quality: isTouch ? 'low' : 'high' }, loadSaved('fl_settings', {}));
 settings.binds = Object.assign({}, DEFAULT_BINDS, settings.binds || {});
 function saveSettings() { save('fl_settings', settings); }
@@ -51,6 +53,7 @@ let loadout = S.sanitizeLoadout(loadSaved('fl_loadout', { primary: 'thompson', a
 
 function buildLoadout(el) {
   let cls = S.WEAPONS[loadout.primary].cls;
+  let streakSel = loadout.streaks.slice(), ksDesc = '';
   let desc = '';
   const btn = (text, on, onClick, disabled, title) => {
     const b = document.createElement('button');
@@ -118,8 +121,23 @@ function buildLoadout(el) {
     el.appendChild(sr);
     el.appendChild(div('lo-label', `Sidearm attachment (${loadout.secAtts.length}/${S.MAX_SEC_ATTACHMENTS})`));
     el.appendChild(attRow(loadout.secondary, loadout.secAtts, S.MAX_SEC_ATTACHMENTS, 'secAtts'));
+    el.appendChild(div('lo-label', `Scorestreaks (${streakSel.length}/3) · earn points with kills, assists and objectives without dying`));
+    const kr = div('lo-atts ks-pick');
+    for (const id of S.STREAK_IDS) {
+      const on = streakSel.includes(id), d = S.STREAKS[id];
+      const b = btn(`${d.name} · ${d.cost}`, on, () => {
+        if (on) streakSel = streakSel.filter((x) => x !== id);
+        else if (streakSel.length < 3) streakSel = streakSel.concat([id]);
+        ksDesc = d.name + ': ' + d.desc;
+        if (streakSel.length === 3) loadout.streaks = streakSel.slice();
+        commit();
+      }, !on && streakSel.length >= 3, d.desc);
+      kr.appendChild(b);
+    }
+    el.appendChild(kr);
+    el.appendChild(div('lo-desc', streakSel.length < 3 ? 'Pick ' + (3 - streakSel.length) + ' more.' + (ksDesc ? ' ' + ksDesc : '') : ksDesc));
   }
-  function commit() { loadout = S.sanitizeLoadout(loadout); save('fl_loadout', loadout); render(); }
+  function commit() { loadout = S.sanitizeLoadout(loadout); if (streakSel.length === 3) streakSel = loadout.streaks.slice(); save('fl_loadout', loadout); render(); }
   render();
   return { render };
 }
@@ -357,7 +375,7 @@ function onMessage(m) {
     case 'err': showErr(m.msg); break;
     case 'r':
       roster.clear();
-      for (const p of m.l) roster.set(p.i, p);
+      for (const p of m.l) { roster.set(p.i, p); knownNames.set(p.i, p.n); knownTeams.set(p.i, p.t); }
       if (!$('scoreboard').classList.contains('hidden')) renderScores();
       break;
     case 'pong': ping = performance.now() - m.c; break;
@@ -382,7 +400,7 @@ function onState(m) {
   if (m.md) currentMode = m.md;
   if (m.mp && (m.md !== objModeId || m.mp !== objMapId)) buildObjectives(m.mp, m.md || 'tdm');
   objState = m.ob;
-  match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb; match.rc = m.rc;
+  match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb; match.rc = m.rc; match.jm = m.jm; match.dr = m.dr;
   lastStateAt = now;
   if (match.st === 'ended' && m.st === 'playing') { match.winner = null; killfeed.length = 0; }
   match.st = m.st;
@@ -405,8 +423,9 @@ function onState(m) {
   for (const e of m.ev) handleEvent(e, now);
 }
 
-const nameOf = (id) => { const r = roster.get(id); return r ? r.n : '?'; };
-const teamOf = (id) => { const r = roster.get(id); return r ? r.t : 'allies'; };
+const knownNames = new Map(), knownTeams = new Map(); // remember players who have left (e.g. paratroopers)
+const nameOf = (id) => { const r = roster.get(id); return r ? r.n : knownNames.get(id) || '?'; };
+const teamOf = (id) => { const r = roster.get(id); return r ? r.t : knownTeams.get(id) || 'allies'; };
 
 const TEAMNAME = { allies: 'Allies', axis: 'Axis' };
 function objNotice(e, now) {
@@ -433,9 +452,9 @@ function objNotice(e, now) {
   else tone(520, 0.1, 0.05, 'triangle');
 }
 
-// ---- killstreaks
+// ---- scorestreaks
 function useStreak(id) {
-  if (!you || !you.alive || !(you.ks || []).includes(id)) return;
+  if (!id || !you || !you.alive || !(you.ks || []).includes(id)) return;
   send({ t: 'in', l: [], a: +yaw.toFixed(4), p: +pitch.toFixed(4), f: lastFireSent }); // make sure the server has your aim
   send({ t: 'ks', k: id });
 }
@@ -444,28 +463,39 @@ function notice(text, good, now) {
   while (killfeed.length > 5) killfeed.shift();
   centerMsg = { text, t: now };
 }
+let ptsPop = { n: 0, why: '', t: 0 };
+function pointsEarned(e, now) {
+  if (now - ptsPop.t < 1500) { ptsPop.n += e.n; ptsPop.why = e.w; } else ptsPop = { n: e.n, why: e.w, t: now };
+  ptsPop.t = now;
+}
 function streakEarned(id, now) {
-  const key = isTouch ? 'tap it below' : 'press ' + keyName(settings.binds[KS_BIND[id]]);
+  const key = isTouch ? 'tap it below' : 'press ' + ksKey(id);
   notice(`${S.STREAKS[id].name} ready! (${key})`, true, now);
   tone(523, 0.12, 0.08, 'triangle'); setTimeout(() => tone(659, 0.12, 0.08, 'triangle'), 110); setTimeout(() => tone(784, 0.2, 0.08, 'triangle'), 220);
 }
+const STREAK_TEXT = {
+  recon: ['Friendly recon plane overhead', 'Enemy recon plane overhead'],
+  counter: ['Enemy radar jammed', 'Your minimap is being jammed!'],
+  supply: ['Supply drop inbound', 'Enemy supply drop spotted'],
+  air: ['Friendly airstrike inbound', 'Enemy airstrike incoming! Take cover!'],
+  strafe: ['Friendly strafing run inbound', 'Enemy strafing run incoming! Take cover!'],
+  mortar: ['Friendly mortar barrage', 'Enemy mortar barrage incoming!'],
+  para: ['Friendly paratroopers dropping in', 'Enemy paratroopers dropping in!'],
+  arty: ['Friendly artillery barrage', 'Enemy artillery incoming! Get to cover!'],
+};
 function streakUsed(e, now) {
   const mine = you && e.t === you.team, self = e.i === myId;
-  const name = S.STREAKS[e.k].name;
-  const text = self ? `${name} called in` : mine ? `Friendly ${name.toLowerCase()} ${e.k === 'recon' ? 'overhead' : 'inbound'}` : e.k === 'recon' ? 'Enemy recon plane overhead' : `Enemy ${name.toLowerCase()} incoming! Take cover!`;
-  notice(text, mine, now);
+  notice(self ? `${S.STREAKS[e.k].name} called in` : STREAK_TEXT[e.k][mine ? 0 : 1], mine, now);
   if (!mine) { tone(440, 0.25, 0.08, 'square'); setTimeout(() => tone(440, 0.25, 0.08, 'square'), 350); }
-  if (e.k === 'recon') { drone(4, 0.15); return; }
-  if (e.k === 'air') {
-    const flight = { x: e.x, y: e.y, ang: e.a, start: now, arrive: now + 3200, planes: [] };
-    for (let i = 0; i < 3; i++) { const pl = makePlane(mine ? 0x4d5a36 : 0x5d6266); scene.add(pl); flight.planes.push(pl); }
-    flights.push(flight);
-    setTimeout(() => drone(4.5, 0.35), 1200);
-  }
+  const col = mine ? 0x4d5a36 : 0x5d6266;
+  if (e.k === 'recon' || e.k === 'counter') { drone(4, 0.15); return; }
+  if (e.k === 'air') { addFlight(e.x, e.y, e.a, now + 3200, 3, col, 430, 760); setTimeout(() => drone(4.5, 0.35), 1200); }
+  if (e.k === 'strafe') { addFlight(e.x, e.y, e.a, now + 3185, 1, col, 170, 1150, 0.6); setTimeout(() => drone(2.5, 0.5), 1800); }
+  if (e.k === 'supply' || e.k === 'para') { addFlight(e.x, e.y, Math.random() * TAU, now + (e.k === 'para' ? 200 : 300), 1, col, 520, 650, 1.5); drone(4, 0.3); }
   for (const [x, y, ms] of e.s || []) {
     shells.push({ x, y, at: now + ms, kind: e.k });
-    if (e.k === 'mortar') setTimeout(() => whistle(x, y), Math.max(0, ms - 1100));
-    else setTimeout(() => whistle(x, y, true), Math.max(0, ms - 800));
+    if (e.k === 'mortar' || e.k === 'arty') setTimeout(() => whistle(x, y, false, e.k === 'arty'), Math.max(0, ms - 1100));
+    else if (e.k === 'air') setTimeout(() => whistle(x, y, true), Math.max(0, ms - 800));
   }
 }
 function drone(sec, vol) {
@@ -476,17 +506,18 @@ function drone(sec, vol) {
   for (const fr of [78, 81, 156]) { const o = actx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; o.connect(f); o.start(t); o.stop(t + sec + 0.1); }
   f.connect(g); g.connect(master);
 }
-function whistle(x, y, short) {
+function whistle(x, y, short, heavy) {
   if (!actx) return;
   const v = Math.max(0.05, volAt(x, y)) * 0.12, t = actx.currentTime, dur = short ? 0.7 : 1.0;
   const o = actx.createOscillator(); o.type = 'sine';
-  o.frequency.setValueAtTime(short ? 900 : 1600, t); o.frequency.exponentialRampToValueAtTime(short ? 300 : 500, t + dur);
+  o.frequency.setValueAtTime(short ? 900 : heavy ? 1100 : 1600, t); o.frequency.exponentialRampToValueAtTime(short ? 300 : heavy ? 260 : 500, t + dur);
   const g = actx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + dur * 0.7); g.gain.linearRampToValueAtTime(0.0001, t + dur);
   o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
 }
 const flights = [], shells = [], shellMeshes = [];
-let reconPlanes = { allies: null, axis: null };
-function makePlane(color) {
+const circlers = { allies: null, axis: null, jamAllies: null, jamAxis: null };
+const dropMeshes = new Map();
+function makePlane(color, scale) {
   const g = new THREE.Group();
   const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.3 });
   const body = new THREE.Mesh(new THREE.CylinderGeometry(8, 5, 90, 12), paint); body.rotation.z = Math.PI / 2; g.add(body);
@@ -496,53 +527,86 @@ function makePlane(color) {
   const fin = new THREE.Mesh(new THREE.BoxGeometry(14, 20, 2), paint); fin.position.set(-40, 10, 0); g.add(fin);
   const prop = new THREE.Mesh(new THREE.BoxGeometry(1, 30, 3), M.dark); prop.position.x = 57; g.add(prop); g.userData.prop = prop;
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  if (scale) g.scale.setScalar(scale);
   return g;
 }
+function addFlight(x, y, ang, arrive, n, color, h, speed, scale) {
+  const fl = { x, y, ang, arrive, planes: [], h, speed };
+  for (let i = 0; i < n; i++) { const pl = makePlane(color, scale); scene.add(pl); fl.planes.push(pl); }
+  flights.push(fl);
+}
+function makeCrate(color) {
+  const g = new THREE.Group();
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(34, 26, 34), new THREE.MeshLambertMaterial({ map: tex('wood') })); crate.position.y = 13; crate.castShadow = true; g.add(crate);
+  const band = new THREE.Mesh(new THREE.BoxGeometry(35, 6, 35), new THREE.MeshLambertMaterial({ color })); band.position.y = 13; g.add(band);
+  const chute = new THREE.Mesh(new THREE.SphereGeometry(40, 14, 8, 0, TAU, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xd8d0b8, side: THREE.DoubleSide })); chute.position.y = 90; g.add(chute);
+  for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const l = rodMesh(new THREE.Vector3(dx * 15, 26, dz * 15), new THREE.Vector3(dx * 36, 92, dz * 36)); g.add(l); }
+  g.userData.chute = chute;
+  const smoke = new THREE.Sprite(new THREE.SpriteMaterial({ map: Guns.fxTextures().smoke, color, transparent: true, depthWrite: false, opacity: 0.7 }));
+  smoke.scale.setScalar(70); smoke.position.y = 50; g.add(smoke); g.userData.smoke = smoke;
+  return g;
+}
+function rodMesh(a, b) { const len = a.distanceTo(b); const m = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, len, 4), M.dark); m.position.copy(a).lerp(b, 0.5); m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); return m; }
 function updateStreakFx(now, dt) {
-  // recon planes circle the map while active
-  for (const [i, team] of [[0, 'allies'], [1, 'axis']]) {
-    const on = match.rc && match.rc[i] > 0 && joined;
-    if (on && !reconPlanes[team]) { reconPlanes[team] = makePlane(team === 'allies' ? 0x4d5a36 : 0x5d6266); scene.add(reconPlanes[team]); }
-    if (!on && reconPlanes[team]) { scene.remove(reconPlanes[team]); reconPlanes[team] = null; }
-    const pl = reconPlanes[team];
-    if (pl) {
-      const a = now / 7000 + i * Math.PI, r = 1000;
-      pl.position.set(S.MAP_W / 2 + Math.cos(a) * r, 720, S.MAP_H / 2 + Math.sin(a) * r);
-      pl.rotation.set(0.35, -a - Math.PI, 0); pl.userData.prop.rotation.x += dt * 40;
-    }
-  }
-  // bomber flights cross the target line
+  // planes circling for recon and counter-recon
+  const circle = (key, on, color, i) => {
+    if (on && !circlers[key]) { circlers[key] = makePlane(color); scene.add(circlers[key]); }
+    if (!on && circlers[key]) { scene.remove(circlers[key]); circlers[key] = null; }
+    const pl = circlers[key];
+    if (pl) { const a = now / 7000 + i * Math.PI / 2, r = 1000; pl.position.set(S.MAP_W / 2 + Math.cos(a) * r, 700 + i * 30, S.MAP_H / 2 + Math.sin(a) * r); pl.rotation.set(0.35, -a - Math.PI, 0); pl.userData.prop.rotation.x += dt * 40; }
+  };
+  circle('allies', joined && match.rc && match.rc[0] > 0, 0x4d5a36, 0);
+  circle('axis', joined && match.rc && match.rc[1] > 0, 0x5d6266, 2);
+  circle('jamAxis', joined && match.jm && match.jm[1] > 0, 0x4d5a36, 1);   // allies jamming the axis
+  circle('jamAllies', joined && match.jm && match.jm[0] > 0, 0x5d6266, 3);
+  // flights crossing a target point
   for (let f = flights.length - 1; f >= 0; f--) {
-    const fl = flights[f], tt = (now - fl.arrive) / 1000, sp = 760;
+    const fl = flights[f], tt = (now - fl.arrive) / 1000;
     if (tt > 4) { for (const pl of fl.planes) scene.remove(pl); flights.splice(f, 1); continue; }
     fl.planes.forEach((pl, k) => {
-      const lat = (k - 1) * 70, back = Math.abs(k - 1) * 50;
-      const d = tt * sp - back;
-      pl.position.set(fl.x + Math.cos(fl.ang) * d - Math.sin(fl.ang) * lat, 430 + k * 12, fl.y + Math.sin(fl.ang) * d + Math.cos(fl.ang) * lat);
+      const lat = (k - (fl.planes.length - 1) / 2) * 70, back = Math.abs(k - 1) * 50 * (fl.planes.length > 1 ? 1 : 0);
+      const d = tt * fl.speed - back;
+      pl.position.set(fl.x + Math.cos(fl.ang) * d - Math.sin(fl.ang) * lat, fl.h + k * 12, fl.y + Math.sin(fl.ang) * d + Math.cos(fl.ang) * lat);
       pl.rotation.set(0, -fl.ang, 0); pl.userData.prop.rotation.x += dt * 40;
     });
   }
-  // falling bombs / mortar shells
+  // falling bombs and shells
   let n = 0;
   for (let i = shells.length - 1; i >= 0; i--) {
-    const sh = shells[i], left = sh.at - now, fall = sh.kind === 'air' ? 800 : 450;
+    const sh = shells[i], left = sh.at - now, fall = sh.kind === 'air' ? 800 : sh.kind === 'strafe' ? 0 : 450;
     if (left < 0) { shells.splice(i, 1); continue; }
-    if (left > fall) continue;
+    if (left > fall || !fall) continue;
     let m = shellMeshes[n];
     if (!m) { m = new THREE.Mesh(new THREE.CapsuleGeometry(3, 12, 4, 8), M.dark); scene.add(m); shellMeshes[n] = m; }
     m.visible = true; m.position.set(sh.x, 4 + (left / fall) * (sh.kind === 'air' ? 420 : 320), sh.y);
     n++;
   }
   for (let i = n; i < shellMeshes.length; i++) shellMeshes[i].visible = false;
+  // supply crates: parachute down, then sit with coloured smoke
+  const seen = new Set();
+  for (const [x, y, tm, landed, id, landIn] of match.dr || []) {
+    seen.add(id);
+    let m = dropMeshes.get(id);
+    if (!m) { m = makeCrate(tm === 1 ? 0x4f8fe0 : 0xd9483b); scene.add(m); dropMeshes.set(id, m); }
+    const h = landed ? 0 : 10 + (landIn / 3000) * 420;
+    m.position.set(x, h, y);
+    m.userData.chute.visible = !landed;
+    m.userData.smoke.visible = !!landed && you && tm === (you.team === 'allies' ? 1 : 2);
+    if (m.userData.smoke.visible) { m.userData.smoke.position.y = 50 + Math.sin(now / 400) * 6; m.userData.smoke.material.opacity = 0.45 + Math.sin(now / 300) * 0.1; }
+  }
+  for (const [id, m] of dropMeshes) if (!seen.has(id)) { scene.remove(m); dropMeshes.delete(id); }
 }
-function teamRecon() { return !!(you && match.rc && match.rc[you.team === 'allies' ? 0 : 1] > 0); }
-function streakHud() {
+const myTeamIdx = () => (you && you.team === 'allies' ? 0 : 1);
+function teamRecon() { return !!(you && match.rc && match.rc[myTeamIdx()] > 0 && !teamJammed()); }
+function teamJammed() { return !!(you && match.jm && match.jm[myTeamIdx()] > 0); }
+function streakHud(now) {
   if (!you) return '';
-  const st = you.st || 0, have = you.ks || [];
-  const next = S.STREAK_IDS.find((id) => S.STREAKS[id].kills > st);
-  let html = `<div class="ks-line">Streak <b>${st}</b>${next ? ` &middot; ${esc(S.STREAKS[next].name)} at ${S.STREAKS[next].kills}` : ''}</div>`;
-  if (teamRecon()) html += `<div class="ks-line ks-on">Recon plane overhead ${Math.ceil(match.rc[you.team === 'allies' ? 0 : 1] / 1000)}s</div>`;
-  for (const id of have) html += `<button class="ks-btn" data-ks="${id}">${isTouch ? '' : '[' + esc(keyName(settings.binds[KS_BIND[id]])) + '] '}${esc(S.STREAKS[id].name)}</button>`;
+  const sp = you.sp || 0, list = myStreakList(), have = you.ks || [];
+  const next = list.find((id) => S.STREAKS[id].cost > sp);
+  let html = `<div class="ks-line">Score <b>${sp}</b>${next ? ` &middot; ${esc(S.STREAKS[next].name)} at ${S.STREAKS[next].cost}` : ''}</div>`;
+  if (teamRecon()) html += `<div class="ks-line ks-on">Recon plane overhead ${Math.ceil(match.rc[myTeamIdx()] / 1000)}s</div>`;
+  if (teamJammed()) html += `<div class="ks-line ks-bad">Minimap jammed ${Math.ceil(match.jm[myTeamIdx()] / 1000)}s</div>`;
+  for (const id of have) html += `<button class="ks-btn" data-ks="${id}">${isTouch ? '' : '[' + esc(ksKey(id)) + '] '}${esc(S.STREAKS[id].name)}</button>`;
   return html;
 }
 
@@ -598,6 +662,13 @@ function handleEvent(e, now) {
       }
       break;
     case 'x':
+      if (e.sm) { // strafing-run bullet impacts
+        const pos = new THREE.Vector3(e.x, 3, e.y);
+        burst(pos, 'dust', 6, 140); burst(pos, 'spark', 3, 200);
+        noise(2600, 0.06, volAt(e.x, e.y) * 0.5);
+        shake = Math.max(shake, 3 * volAt(e.x, e.y));
+        break;
+      }
       spawnExplosion(e.x, e.z || 5, e.y, now);
       noise(500, 0.9, volAt(e.x, e.y) * 0.9);
       shake = Math.max(shake, 14 * volAt(e.x, e.y));
@@ -611,6 +682,8 @@ function handleEvent(e, now) {
     case 'end': match.winner = e.w; break;
     case 'obj': objNotice(e, now); break;
     case 'ksE': if (e.i === myId) streakEarned(e.k, now); break;
+    case 'pts': if (e.i === myId) pointsEarned(e, now); break;
+    case 'sup': if (e.i === myId) { notice('Resupplied: full ammo, grenades and health', true, now); tone(700, 0.1, 0.07, 'triangle'); setTimeout(() => tone(1050, 0.15, 0.07, 'triangle'), 100); } break;
     case 'ks': streakUsed(e, now); break;
   }
 }
@@ -1462,6 +1535,9 @@ function makeSoldier(id, team) {
   upper.add(box(4, 3.5, 2, band, 0, 50, -9.5)); // armband (left)
   upper.add(box(4, 3.5, 2, band, 0, 50, 9.5));
   const pack = box(5, 14, 12, boot, -7, 48, 0); upper.add(pack);
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(46, 14, 8, 0, TAU, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xcfc6a8, side: THREE.DoubleSide }));
+  canopy.position.y = 150; canopy.visible = false; root.add(canopy);
+  root.userData.canopy = canopy;
   // gun holder (pitches with aim)
   const holder = new THREE.Group(); holder.position.set(6, 52, 3); upper.add(holder);
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
@@ -1586,9 +1662,9 @@ addEventListener('keydown', (e) => {
     case 'prone': proneOn = !proneOn; if (proneOn) crouchOn = false; break;
     case 'jump': pressJump(); break;
     case 'sprint': crouchOn = false; proneOn = false; break;
-    case 'ks1': useStreak('recon'); break;
-    case 'ks2': useStreak('air'); break;
-    case 'ks3': useStreak('mortar'); break;
+    case 'ks1': useStreak(myStreakList()[0]); break;
+    case 'ks2': useStreak(myStreakList()[1]); break;
+    case 'ks3': useStreak(myStreakList()[2]); break;
   }
 });
 addEventListener('keyup', (e) => {
@@ -1750,6 +1826,7 @@ function showMenu(err) {
   for (const id of [...soldiers.keys()]) removeSoldier(id);
   for (const f of flights) for (const pl of f.planes) scene.remove(pl);
   flights.length = 0; shells.length = 0;
+  for (const m of dropMeshes.values()) scene.remove(m); dropMeshes.clear();
   showScreen('menu');
   $('err').textContent = err || '';
   loadoutSummary();
@@ -1823,7 +1900,7 @@ $('quality').addEventListener('change', () => { settings.quality = $('quality').
 function updateHelp() {
   if (isTouch) return;
   const k = (a) => keyName(settings.binds[a]);
-  $('controlsHelp').innerHTML = `Click to lock the mouse &middot; ${k('forward')}${k('left')}${k('back')}${k('right')} move &middot; Left click fire &middot; Right click aim &middot; ${k('sprint')} sprint &middot; ${k('jump')} jump &middot; ${k('crouch')} crouch / slide (hold: prone) &middot; ${k('prone')} prone &middot; ${k('reload')} reload &middot; ${k('swap')} swap &middot; ${k('grenade')} grenade &middot; ${k('melee')} melee &middot; ${k('ks1')}/${k('ks2')}/${k('ks3')} killstreaks &middot; ${k('scores')} scores &middot; change keys in Settings`;
+  $('controlsHelp').innerHTML = `Click to lock the mouse &middot; ${k('forward')}${k('left')}${k('back')}${k('right')} move &middot; Left click fire &middot; Right click aim &middot; ${k('sprint')} sprint &middot; ${k('jump')} jump &middot; ${k('crouch')} crouch / slide (hold: prone) &middot; ${k('prone')} prone &middot; ${k('reload')} reload &middot; ${k('swap')} swap &middot; ${k('grenade')} grenade &middot; ${k('melee')} melee &middot; ${k('ks1')}/${k('ks2')}/${k('ks3')} scorestreaks &middot; ${k('scores')} scores &middot; change keys in Settings`;
 }
 updateHelp();
 $('armoryBack').addEventListener('click', () => showMenu(''));
@@ -2154,6 +2231,7 @@ function frame(now) {
       showTag = t < 1500 && S.rayWorld(pred.x, pred.y, eye, dx, dy, dh, t) >= t - 1;
     }
     s.tag.visible = showTag;
+    s.root.userData.canopy.visible = !!(p.f & 2048);
     s.tag.position.y = prone ? 40 : crouch ? 66 : 86;
     if (prone) s.tag.position.set(30, 40, 0); else s.tag.position.x = 0;
   }
@@ -2382,6 +2460,8 @@ function drawMinimap(players) {
     c.fillStyle = team === you.team ? '#5aa0ff' : '#ff5040';
     c.beginPath(); c.arc(p.x, p.y, 34, 0, TAU); c.fill();
   }
+  // your team's supply drops
+  for (const [x, y, tm, landed] of match.dr || []) if (you && tm === myTeamIdx() + 1) { c.fillStyle = '#7fd36a'; c.fillRect(x - 30, y - 30, 60, 60); }
   // objectives
   const map = S.MAPS[objMapId], ob = objState, col = (k) => (k === 1 ? '#5aa0ff' : k === 2 ? '#ff5040' : '#e8e2c8');
   if (map && ob) {
@@ -2391,6 +2471,12 @@ function drawMinimap(players) {
     if (currentMode === 'hq' && ob.z != null) { const z = map.hq[ob.z]; c.strokeStyle = ob.c ? '#f0c040' : col(ob.h); c.beginPath(); c.arc(z.x, z.y, 140, 0, TAU); c.stroke(); }
   }
   c.restore();
+  if (teamJammed()) { // counter-recon static
+    c.save(); c.beginPath(); c.rect(ox, oy, size, size); c.clip();
+    for (let i = 0; i < 260; i++) { const g2 = Math.random() * 200; c.fillStyle = `rgba(${g2},${g2},${g2},.85)`; c.fillRect(ox + Math.random() * size, oy + Math.random() * size, 2 + Math.random() * 4, 2); }
+    c.fillStyle = 'rgba(255,90,70,.9)'; c.font = 'bold 13px sans-serif'; c.textAlign = 'center'; c.fillText('JAMMED', ox + size / 2, oy + size / 2 + 4);
+    c.restore();
+  }
   // player arrow (always up)
   c.fillStyle = '#fff';
   c.beginPath(); c.moveTo(ox + size / 2, oy + size / 2 - 7); c.lineTo(ox + size / 2 - 5, oy + size / 2 + 5); c.lineTo(ox + size / 2 + 5, oy + size / 2 + 5); c.closePath(); c.fill();
@@ -2423,7 +2509,9 @@ function objectiveHud(now) {
 
 function updateHud(now) {
   if (!you) return;
-  const ksh = streakHud();
+  const ksh = streakHud(now);
+  const pp = now - ptsPop.t < 1600 && ptsPop.n ? `+${ptsPop.n} ${esc(ptsPop.why)}` : '';
+  if (hudCache.pp !== pp) { hudCache.pp = pp; $('ptsPop').textContent = pp; $('ptsPop').classList.remove('pop'); void $('ptsPop').offsetWidth; if (pp) $('ptsPop').classList.add('pop'); }
   if (hudCache.ksh !== ksh) { hudCache.ksh = ksh; $('ksPanel').innerHTML = ksh; }
   const md = S.MODES[currentMode] || S.MODES.tdm;
   setText('modeLabel', `${md.name} · ${(S.MAPS[objMapId] || S.MAPS.ruins).name} · first to ${match.sl || md.def}`);

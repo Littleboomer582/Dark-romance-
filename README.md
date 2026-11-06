@@ -55,11 +55,18 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - **Slide:** sprint, then press crouch.
   - **Prone:** slow, but steadier and harder to hit; the bipod works prone.
   - Jumping makes shots inaccurate.
-- **Killstreaks**: earned by kills in a row without dying.
-  - **3 kills: Recon Plane.** Every enemy shows on your team's minimap for 30 seconds.
-  - **5 kills: Airstrike.** Bombers drop a line of bombs through the spot you're looking at.
-  - **7 kills: Mortar Barrage.** Shells rain on enemy positions.
-  - Everyone hears a warning before strikes land, and walls give cover. Bots use killstreaks too.
+- **Scorestreaks**:
+  - **Earning points:** kills (+100), headshots (+25), assists (+50), and objectives: capturing or neutralizing Domination flags, taking, capturing or returning CTF flags, and holding the HQ. Points reset when you die.
+  - **Choosing:** pick 3 in your loadout. Keys 5, 6 and 7 use them in cost order.
+  - **400 Recon Plane:** shows every enemy on your team's minimap.
+  - **500 Counter-Recon:** jams the enemy minimap and blocks their recon.
+  - **550 Supply Drop:** a crate with full ammo, grenades and health for your team.
+  - **750 Airstrike:** a line of bombs through your aim point.
+  - **850 Strafing Run:** a fighter rakes your aim line.
+  - **950 Mortar Barrage:** shells on enemy positions.
+  - **1100 Paratroopers:** three friendly soldiers who fight for 45 seconds.
+  - **1300 Artillery:** a heavy bombardment of the enemy half of the map.
+  - Bots pick and use scorestreaks too.
 - **Settings screen**:
   - Rebind every key.
   - Mouse: look sensitivity, aiming sensitivity, hold or toggle aim, and invert-Y.
@@ -138,7 +145,7 @@ If the app is hosted somewhere other than the game server, point it at the serve
 | Reload / Swap | R / Q or mouse wheel | **R** / **⇆** |
 | Grenade / Melee | G / V | **G** / **⚔** |
 | Rifle grenade | B | **RG** |
-| Killstreaks | 5 / 6 / 7 | tap the button that appears |
+| Scorestreaks | 5 / 6 / 7 | tap the button that appears |
 | Scores / Loadout | Tab / L | ☰ / ⚙ |
 
 Every key can be changed in **Settings**, which is on the main menu, the pause screen and the loadout screen.

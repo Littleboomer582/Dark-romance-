@@ -143,6 +143,13 @@
     return s;
   }
 
+  // three different scorestreaks, ordered by cost
+  function cleanStreaks(list) {
+    const out = [];
+    if (Array.isArray(list)) for (const id of list) if (STREAKS[id] && !out.includes(id) && out.length < 3) out.push(id);
+    for (const id of DEFAULT_STREAKS) if (out.length < 3 && !out.includes(id)) out.push(id);
+    return out.sort((a, b) => STREAKS[a].cost - STREAKS[b].cost);
+  }
   function sanitizeLoadout(lo) {
     lo = lo || {};
     const primary = WEAPONS[lo.primary] && !WEAPONS[lo.primary].secondary ? lo.primary : 'thompson';
@@ -151,6 +158,7 @@
       primary, secondary,
       atts: cleanAtts(primary, lo.atts, MAX_ATTACHMENTS),
       secAtts: cleanAtts(secondary, lo.secAtts, MAX_SEC_ATTACHMENTS),
+      streaks: cleanStreaks(lo.streaks),
     };
   }
 
@@ -349,12 +357,20 @@
   };
   const MODE_IDS = Object.keys(MODES);
   // Killstreaks: earned by kills in a row without dying (killstreak kills don't count)
+  // Scorestreaks: earned with points (kills, assists, objectives) without dying. Pick 3 in your loadout.
   const STREAKS = {
-    recon: { name: 'Recon Plane', kills: 3, desc: 'Shows every enemy on your team\'s minimap for 30 seconds.', ms: 30000 },
-    air: { name: 'Airstrike', kills: 5, desc: 'Bombers drop a line of bombs through the spot you are looking at.' },
-    mortar: { name: 'Mortar Barrage', kills: 7, desc: 'Shells rain down on enemy positions.' },
+    recon: { name: 'Recon Plane', cost: 400, desc: 'Every enemy shows on your team\'s minimap for 30 seconds.', ms: 30000 },
+    counter: { name: 'Counter-Recon', cost: 500, desc: 'Jams the enemy minimap with static and blocks their recon for 30 seconds.', ms: 30000 },
+    supply: { name: 'Supply Drop', cost: 550, desc: 'A crate parachutes in next to you: full ammo, grenades and health for any teammate who grabs it.' },
+    air: { name: 'Airstrike', cost: 750, desc: 'Bombers drop a line of bombs through the spot you are looking at.' },
+    strafe: { name: 'Strafing Run', cost: 850, desc: 'A fighter flies low along your aim line, raking it with machine-gun fire.' },
+    mortar: { name: 'Mortar Barrage', cost: 950, desc: 'Shells rain down on enemy positions.' },
+    para: { name: 'Paratroopers', cost: 1100, desc: 'Three friendly soldiers parachute in beside you and fight for 45 seconds.', ms: 45000 },
+    arty: { name: 'Artillery', cost: 1300, desc: 'A heavy bombardment pounds the enemy half of the map.' },
   };
   const STREAK_IDS = Object.keys(STREAKS);
+  const DEFAULT_STREAKS = ['recon', 'air', 'mortar'];
+  const POINTS = { kill: 100, headshot: 25, assist: 50, capture: 150, neutralize: 50, flagTake: 100, flagCapture: 300, flagReturn: 100, hqSecond: 10 };
 
   // the active map's walls and spawns (the same array objects are refilled by useMap)
   const WALLS = [];
@@ -591,7 +607,7 @@
 
   const api = {
     MAP_W, MAP_H, PLAYER_R, BASE_SPEED, MAX_HP, SCORE_LIMIT, MATCH_MS, MAX_ATTACHMENTS, MAX_SEC_ATTACHMENTS,
-    HEAD_ZONE, HEADSHOT_MULT, WEAPONS, ATTACHMENTS, WALLS, SPAWNS, MAPS, MAP_IDS, MODES, MODE_IDS, STREAKS, STREAK_IDS, HEIGHTS, useMap,
+    HEAD_ZONE, HEADSHOT_MULT, WEAPONS, ATTACHMENTS, WALLS, SPAWNS, MAPS, MAP_IDS, MODES, MODE_IDS, STREAKS, STREAK_IDS, DEFAULT_STREAKS, POINTS, HEIGHTS, useMap,
     computeStats, sanitizeLoadout, cleanAtts, resolveCircle, moveCircle, rayWalls, rayWorld, rayCylinder, rayCircle,
     hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, headZone, clamp,
     groundAt, stepMove, newMoveState, GRAVITY, JUMP_V,
