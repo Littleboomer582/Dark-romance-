@@ -5,6 +5,7 @@
   const S = (typeof module !== 'undefined' && module.exports) ? require('./shared.js') : root.Shared;
 
 const SEND_EVERY = 2; // broadcast at 30 Hz
+const STREAK_WEAPONS = ['Airstrike', 'Mortar Barrage'];
 const RESPAWN_MS = 3500;
 const MAX_PLAYERS_PER_ROOM = 16;
 const DOM_RADIUS = 100, FLAG_RADIUS = 38, FLAG_RETURN_MS = 15000, HQ_RADIUS = 140, HQ_MOVE_MS = 60000;
@@ -151,8 +152,10 @@ class Room {
     this.endsAt = now + this.matchMs;
     this.nades = [];
     this.initObjectives(now);
+    this.recon = { allies: 0, axis: 0 };
+    this.strikes = [];
     for (const p of this.players.values()) {
-      p.kills = 0; p.deaths = 0;
+      p.kills = 0; p.deaths = 0; p.streak = 0; p.ks = [];
       this.spawn(p, now);
     }
   }
@@ -358,8 +361,15 @@ class Room {
       victim.killedBy = attacker.id;
       victim.killedWith = weapon;
       victim.killerPos = [attacker.x | 0, attacker.y | 0];
+      victim.streak = 0;
       if (attacker !== victim && attacker.team !== victim.team) {
         attacker.kills++;
+        if (!STREAK_WEAPONS.includes(weapon) && attacker.ks) { // killstreak progress
+          attacker.streak = (attacker.streak || 0) + 1;
+          for (const id of S.STREAK_IDS) {
+            if (S.STREAKS[id].kills === attacker.streak && !attacker.ks.includes(id)) { attacker.ks.push(id); this.events.push({ e: 'ksE', i: attacker.id, k: id }); }
+          }
+        }
         if (this.state === 'playing' && this.mode === 'tdm') this.score[attacker.team]++;
       }
       this.events.push({ e: 'k', k: attacker.id, v: victim.id, w: weapon, hs: hs ? 1 : 0 });
@@ -466,15 +476,64 @@ class Room {
     n.dead = true;
     this.events.push({ e: 'x', x: n.x | 0, y: n.y | 0, z: Math.max(0, n.h) | 0 });
     const owner = this.players.get(n.owner) || { id: n.owner, team: n.team, kills: 0 };
-    const name = n.kind === 'rg' ? 'Rifle Grenade' : 'Frag Grenade';
+    const name = n.kind === 'rg' ? 'Rifle Grenade' : n.kind === 'air' ? 'Airstrike' : n.kind === 'mortar' ? 'Mortar Barrage' : 'Frag Grenade';
+    const streak = n.kind === 'air' || n.kind === 'mortar';
     for (const q of this.players.values()) {
-      if (!q.alive || (q.team === n.team && q.id !== n.owner)) continue;
+      if (!q.alive || (q.team === n.team && (q.id !== n.owner || streak))) continue;
       const qh = q.z + S.bodyHeight(q.stance) * 0.5;
       const d = Math.hypot(q.x - n.x, q.y - n.y, (qh - n.h) * 0.6);
       if (d > 200 || !S.hasLOS3(n.x, n.y, Math.max(n.h, 6), q.x, q.y, qh)) continue;
       q.spawnProtectUntil = Math.min(q.spawnProtectUntil, now);
       this.damage(q, d < 60 ? 150 : 150 * (1 - (d - 60) / 140), owner, name, now, false);
     }
+  }
+
+  // ------------------------------------------------------------ killstreaks
+  // target (optional, for bots): { x, y, ang }
+  useStreak(p, id, now, target) {
+    if (!p.alive || !p.ks || !p.ks.includes(id) || this.state !== 'playing') return;
+    p.ks.splice(p.ks.indexOf(id), 1);
+    const enemyTeam = p.team === 'allies' ? 'axis' : 'allies';
+    if (id === 'recon') {
+      this.recon[p.team] = now + S.STREAKS.recon.ms;
+      this.events.push({ e: 'ks', k: id, t: p.team, i: p.id });
+      return;
+    }
+    const shells = [];
+    if (id === 'air') {
+      let tx, ty, ang = p.ang;
+      if (target) { tx = target.x; ty = target.y; ang = target.ang; }
+      else { // where you are looking: along your aim to the ground or the first wall
+        const eye = p.z + S.eyeHeight(p.stance), pt = Math.min(p.pitch, -0.05);
+        const cp = Math.cos(pt), dx = Math.cos(p.ang) * cp, dy = Math.sin(p.ang) * cp, dh = Math.sin(pt);
+        const d = Math.min(1400, S.rayWorld(p.x, p.y, eye, dx, dy, dh, 1400));
+        tx = p.x + dx * d; ty = p.y + dy * d;
+      }
+      for (let i = 0; i < 7; i++) {
+        const off = (i - 3) * 85;
+        const x = S.clamp(tx + Math.cos(ang) * off, 20, S.MAP_W - 20), y = S.clamp(ty + Math.sin(ang) * off, 20, S.MAP_H - 20);
+        shells.push([x | 0, y | 0, 3200 + i * 110]);
+      }
+      this.events.push({ e: 'ks', k: id, t: p.team, i: p.id, x: tx | 0, y: ty | 0, a: +ang.toFixed(3), s: shells });
+    } else if (id === 'mortar') {
+      const enemies = [...this.players.values()].filter((q) => q.alive && q.team === enemyTeam);
+      for (let i = 0; i < 10; i++) {
+        const q = enemies.length ? enemies[Math.floor(Math.random() * enemies.length)] : null;
+        const x = S.clamp((q ? q.x : Math.random() * S.MAP_W) + (Math.random() - 0.5) * 220, 20, S.MAP_W - 20);
+        const y = S.clamp((q ? q.y : Math.random() * S.MAP_H) + (Math.random() - 0.5) * 220, 20, S.MAP_H - 20);
+        shells.push([x | 0, y | 0, 2000 + i * 650 + Math.random() * 300]);
+      }
+      this.events.push({ e: 'ks', k: id, t: p.team, i: p.id, s: shells });
+    }
+    for (const [x, y, ms] of shells) this.strikes.push({ at: now + ms, x, y, h: 4, owner: p.id, team: p.team, kind: id });
+  }
+
+  updateStrikes(now) {
+    if (!this.strikes || !this.strikes.length) return;
+    const due = this.strikes.filter((st) => now >= st.at);
+    if (!due.length) return;
+    this.strikes = this.strikes.filter((st) => now < st.at);
+    for (const st of due) this.explode(st, now);
   }
 
   blockedAt(x, y, h, r) {
@@ -591,6 +650,7 @@ class Room {
       }
       this.updateNades(dt, now);
       this.updateObjectives(now, dt);
+      this.updateStrikes(now);
       if (this.score.allies >= this.scoreLimit || this.score.axis >= this.scoreLimit || now >= this.endsAt) {
         this.state = 'ended';
         this.restartAt = now + (this.lobby ? 10000 : 12000);
@@ -612,7 +672,7 @@ class Room {
     }
     const base = {
       t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, n.kind === 'rg' ? 1 : 0]), sc: [Math.floor(this.score.allies), Math.floor(this.score.axis)],
-      tl: Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, mp: this.map, md: this.mode, ob: this.objState(now), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
+      tl: Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, mp: this.map, md: this.mode, ob: this.objState(now), rc: [Math.max(0, (this.recon || {}).allies - now) | 0, Math.max(0, (this.recon || {}).axis - now) | 0], st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
     };
     this.events = [];
     for (const p of this.players.values()) {
@@ -623,6 +683,7 @@ class Room {
         rl: p.reloadEnd ? Math.max(0, p.reloadEnd - now) / g.stats.reload : 0, nd: p.nades, rg: p.rgren || 0, team: p.team,
         ri: p.alive ? 0 : Math.max(0, p.respawnAt - now), kb: p.killedBy, kw: p.killedWith, kx: p.killerPos,
         g: p.guns.map((x) => [x.id, x.stats.atts]),
+        st: p.streak || 0, ks: p.ks || [],
         mv: [+p.z.toFixed(3), +p.vz.toFixed(3), +p.slide.toFixed(4), +p.sdx.toFixed(4), +p.sdy.toFixed(4), +p.slideCd.toFixed(4), p.pc ? 1 : 0, p.ps ? 1 : 0, p.pj ? 1 : 0],
       };
       p.ws.send(JSON.stringify(base));
@@ -640,7 +701,7 @@ function basePlayer(name) {
   return {
     id: nextId++, name, team: 'allies', x: 0, y: 0, ang: 0, hp: 100, alive: false, kills: 0, deaths: 0,
     input: { fire: false }, lastSeq: 0, moveBudget: 0.3, ads: false, sprint: false, moving: false, triggerHeld: false,
-    pendingLoadout: S.sanitizeLoadout({}), guns: [], slot: 0, nades: 2, respawnAt: 0, pitch: 0, crouch: false, rgren: 0,
+    pendingLoadout: S.sanitizeLoadout({}), guns: [], slot: 0, nades: 2, respawnAt: 0, pitch: 0, crouch: false, rgren: 0, streak: 0, ks: [],
     z: 0, vz: 0, stance: 0, slide: 0, sdx: 0, sdy: 0, slideCd: 0, pc: false, ps: false, pj: false, air: false,
   };
 }
@@ -771,6 +832,15 @@ function botThink(room, p, now, dt) {
       b.stuckCheck = now + 1000;
     }
   }
+  if (p.ks && p.ks.length && Math.random() < 0.02) { // bots call in what they have earned
+    const id = p.ks[0];
+    let tgt = null;
+    if (id === 'air') {
+      const foes = [...room.players.values()].filter((q) => q.alive && q.team !== p.team);
+      if (foes.length) { const f = foes[Math.floor(Math.random() * foes.length)]; tgt = { x: f.x, y: f.y, ang: Math.random() * Math.PI * 2 }; }
+    }
+    if (id !== 'air' || tgt) room.useStreak(p, id, now, tgt);
+  }
   p.input.fire = fire;
   p.ads = ads;
   p.sprint = sprint;
@@ -844,6 +914,7 @@ function connect(ws) {
       case 'melee': room.melee(player, now); break;
       case 'nade': room.throwNade(player, now); break;
       case 'rg': room.fireRifleNade(player, now); break;
+      case 'ks': if (typeof m.k === 'string') room.useStreak(player, m.k, now); break;
       case 'loadout': player.pendingLoadout = S.sanitizeLoadout(m.loadout); break;
       case 'ready':
         if (room.state === 'lobby') { player.ready = !player.ready; room.sendLobby(); }

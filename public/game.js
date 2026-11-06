@@ -15,6 +15,34 @@ function loadSaved(key, def) { try { const v = JSON.parse(localStorage.getItem(k
 function save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) { /* ignore */ } }
 function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
 
+// ================================================================ settings
+const DEFAULT_BINDS = {
+  forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', sprint: 'ShiftLeft',
+  crouch: 'KeyC', prone: 'KeyZ', holdCrouch: 'ControlLeft', reload: 'KeyR', swap: 'KeyQ', grenade: 'KeyG',
+  melee: 'KeyV', rifleNade: 'KeyB', ks1: 'Digit5', ks2: 'Digit6', ks3: 'Digit7', scores: 'Tab', loadout: 'KeyL',
+};
+const BIND_LABELS = {
+  forward: 'Move forward', back: 'Move back', left: 'Move left', right: 'Move right', jump: 'Jump', sprint: 'Sprint',
+  crouch: 'Crouch / slide (hold: prone)', prone: 'Prone', holdCrouch: 'Hold to crouch', reload: 'Reload', swap: 'Switch weapon',
+  grenade: 'Throw grenade', melee: 'Melee', rifleNade: 'Rifle grenade', ks1: 'Recon Plane', ks2: 'Airstrike', ks3: 'Mortar Barrage',
+  scores: 'Scoreboard', loadout: 'Change loadout',
+};
+const KS_BIND = { recon: 'ks1', air: 'ks2', mortar: 'ks3' };
+const settings = Object.assign({ adsSens: 1, invertY: false, fov: isTouch ? 70 : 75, volume: 0.8, quality: isTouch ? 'low' : 'high' }, loadSaved('fl_settings', {}));
+settings.binds = Object.assign({}, DEFAULT_BINDS, settings.binds || {});
+function saveSettings() { save('fl_settings', settings); }
+function keyName(code) {
+  if (!code) return '—';
+  const named = { Space: 'Space', ShiftLeft: 'Left Shift', ShiftRight: 'Right Shift', ControlLeft: 'Left Ctrl', ControlRight: 'Right Ctrl', AltLeft: 'Left Alt', AltRight: 'Right Alt', Tab: 'Tab', CapsLock: 'Caps Lock', Enter: 'Enter', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\' };
+  if (named[code]) return named[code];
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Numpad')) return 'Num ' + code.slice(6);
+  if (code.startsWith('Arrow')) return code.slice(5) + ' arrow';
+  return code;
+}
+const actionFor = (code) => Object.keys(settings.binds).find((a) => settings.binds[a] === code);
+
 // ============================================================= loadout UI
 const CLASSES = ['SMG', 'Assault Rifle', 'Rifle', 'Bolt-Action', 'Shotgun', 'Machine Gun'];
 const SECONDARY_IDS = Object.keys(S.WEAPONS).filter((k) => S.WEAPONS[k].secondary);
@@ -108,11 +136,12 @@ $('controlsHelp').innerHTML = isTouch
   : 'Click to lock the mouse &middot; WASD move &middot; Mouse look &middot; Left click fire &middot; Right click aim down sights &middot; Shift sprint &middot; Space jump &middot; C crouch (while sprinting: slide, hold: prone) &middot; Z prone &middot; Ctrl hold crouch &middot; R reload &middot; Q / wheel swap &middot; G grenade &middot; V melee &middot; B rifle grenade &middot; Tab scores &middot; L loadout';
 
 // ================================================================== audio
-let actx = null, noiseBuf = null, soundsThisFrame = 0;
+let actx = null, noiseBuf = null, soundsThisFrame = 0, master = null;
 function initAudio() {
   if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
   try {
     actx = new (window.AudioContext || window.webkitAudioContext)();
+    master = actx.createGain(); master.gain.value = settings.volume; master.connect(actx.destination);
     noiseBuf = actx.createBuffer(1, actx.sampleRate * 1.5, actx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -125,7 +154,7 @@ function noise(freq, dur, vol) {
   const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = freq;
   const g = actx.createGain(); const t = actx.currentTime;
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  src.connect(f); f.connect(g); g.connect(actx.destination);
+  src.connect(f); f.connect(g); g.connect(master);
   src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.05);
 }
 function tone(freq, dur, vol, type) {
@@ -133,7 +162,7 @@ function tone(freq, dur, vol, type) {
   const o = actx.createOscillator(); o.type = type || 'square'; o.frequency.value = freq;
   const g = actx.createGain(); const t = actx.currentTime;
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.02);
 }
 // Layered gunshot: supersonic crack + muzzle blast + low thump + echo tail, muffled with distance.
 const SHOT_SND = { // crack HP, body LP, body decay, thump Hz, tail decay, gain
@@ -158,7 +187,7 @@ function playShot(wid, x, y, sup) {
   const t = actx.currentTime;
   const out = actx.createGain(); out.gain.value = gain * (0.15 + 0.85 * near * near);
   const muffle = actx.createBiquadFilter(); muffle.type = 'lowpass'; muffle.frequency.value = 500 + 15000 * near * near;
-  out.connect(muffle); muffle.connect(actx.destination);
+  out.connect(muffle); muffle.connect(master);
   if (sup) { nz(out, t, 'lowpass', 1300, 0.7, 0.45, 0.002, 0.09); nz(out, t, 'highpass', 3500, 0.7, 0.2, 0.001, 0.02); return; }
   nz(out, t, 'highpass', hp, 0.8, 0.9 * near, 0.001, 0.035);   // crack
   nz(out, t, 'lowpass', lp, 0.9, 1.0, 0.002, bd);               // blast
@@ -171,7 +200,7 @@ function playShot(wid, x, y, sup) {
 // Mechanical sounds for your own weapon.
 function mech(kind) {
   if (!actx) return;
-  const t = actx.currentTime, d = actx.destination;
+  const t = actx.currentTime, d = master;
   const click = (at, v, f) => nz(d, t + at, 'highpass', f || 3200, 1.2, v, 0.001, 0.025);
   const slide = (at, v, f, dur) => nz(d, t + at, 'bandpass', f || 1400, 1.5, v, 0.01, dur || 0.1);
   switch (kind) {
@@ -353,7 +382,7 @@ function onState(m) {
   if (m.md) currentMode = m.md;
   if (m.mp && (m.md !== objModeId || m.mp !== objMapId)) buildObjectives(m.mp, m.md || 'tdm');
   objState = m.ob;
-  match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb;
+  match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb; match.rc = m.rc;
   lastStateAt = now;
   if (match.st === 'ended' && m.st === 'playing') { match.winner = null; killfeed.length = 0; }
   match.st = m.st;
@@ -402,6 +431,119 @@ function objNotice(e, now) {
   if (good === true) { tone(660, 0.12, 0.07, 'triangle'); setTimeout(() => tone(990, 0.16, 0.07, 'triangle'), 120); }
   else if (good === false) { tone(330, 0.2, 0.07, 'sawtooth'); }
   else tone(520, 0.1, 0.05, 'triangle');
+}
+
+// ---- killstreaks
+function useStreak(id) {
+  if (!you || !you.alive || !(you.ks || []).includes(id)) return;
+  send({ t: 'in', l: [], a: +yaw.toFixed(4), p: +pitch.toFixed(4), f: lastFireSent }); // make sure the server has your aim
+  send({ t: 'ks', k: id });
+}
+function notice(text, good, now) {
+  killfeed.push({ notice: text, good, t: now });
+  while (killfeed.length > 5) killfeed.shift();
+  centerMsg = { text, t: now };
+}
+function streakEarned(id, now) {
+  const key = isTouch ? 'tap it below' : 'press ' + keyName(settings.binds[KS_BIND[id]]);
+  notice(`${S.STREAKS[id].name} ready! (${key})`, true, now);
+  tone(523, 0.12, 0.08, 'triangle'); setTimeout(() => tone(659, 0.12, 0.08, 'triangle'), 110); setTimeout(() => tone(784, 0.2, 0.08, 'triangle'), 220);
+}
+function streakUsed(e, now) {
+  const mine = you && e.t === you.team, self = e.i === myId;
+  const name = S.STREAKS[e.k].name;
+  const text = self ? `${name} called in` : mine ? `Friendly ${name.toLowerCase()} ${e.k === 'recon' ? 'overhead' : 'inbound'}` : e.k === 'recon' ? 'Enemy recon plane overhead' : `Enemy ${name.toLowerCase()} incoming! Take cover!`;
+  notice(text, mine, now);
+  if (!mine) { tone(440, 0.25, 0.08, 'square'); setTimeout(() => tone(440, 0.25, 0.08, 'square'), 350); }
+  if (e.k === 'recon') { drone(4, 0.15); return; }
+  if (e.k === 'air') {
+    const flight = { x: e.x, y: e.y, ang: e.a, start: now, arrive: now + 3200, planes: [] };
+    for (let i = 0; i < 3; i++) { const pl = makePlane(mine ? 0x4d5a36 : 0x5d6266); scene.add(pl); flight.planes.push(pl); }
+    flights.push(flight);
+    setTimeout(() => drone(4.5, 0.35), 1200);
+  }
+  for (const [x, y, ms] of e.s || []) {
+    shells.push({ x, y, at: now + ms, kind: e.k });
+    if (e.k === 'mortar') setTimeout(() => whistle(x, y), Math.max(0, ms - 1100));
+    else setTimeout(() => whistle(x, y, true), Math.max(0, ms - 800));
+  }
+}
+function drone(sec, vol) {
+  if (!actx) return;
+  const t = actx.currentTime, g = actx.createGain(), f = actx.createBiquadFilter();
+  f.type = 'lowpass'; f.frequency.value = 420;
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol * 0.25, t + sec * 0.45); g.gain.linearRampToValueAtTime(0.0001, t + sec);
+  for (const fr of [78, 81, 156]) { const o = actx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; o.connect(f); o.start(t); o.stop(t + sec + 0.1); }
+  f.connect(g); g.connect(master);
+}
+function whistle(x, y, short) {
+  if (!actx) return;
+  const v = Math.max(0.05, volAt(x, y)) * 0.12, t = actx.currentTime, dur = short ? 0.7 : 1.0;
+  const o = actx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(short ? 900 : 1600, t); o.frequency.exponentialRampToValueAtTime(short ? 300 : 500, t + dur);
+  const g = actx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(v, t + dur * 0.7); g.gain.linearRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + 0.05);
+}
+const flights = [], shells = [], shellMeshes = [];
+let reconPlanes = { allies: null, axis: null };
+function makePlane(color) {
+  const g = new THREE.Group();
+  const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.3 });
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(8, 5, 90, 12), paint); body.rotation.z = Math.PI / 2; g.add(body);
+  const nose = new THREE.Mesh(new THREE.CylinderGeometry(6, 9, 12, 12), M.dark); nose.rotation.z = Math.PI / 2; nose.position.x = 50; g.add(nose);
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(22, 2.5, 130), paint); wing.position.x = 8; g.add(wing);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(14, 2, 44), paint); tail.position.x = -40; g.add(tail);
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(14, 20, 2), paint); fin.position.set(-40, 10, 0); g.add(fin);
+  const prop = new THREE.Mesh(new THREE.BoxGeometry(1, 30, 3), M.dark); prop.position.x = 57; g.add(prop); g.userData.prop = prop;
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+function updateStreakFx(now, dt) {
+  // recon planes circle the map while active
+  for (const [i, team] of [[0, 'allies'], [1, 'axis']]) {
+    const on = match.rc && match.rc[i] > 0 && joined;
+    if (on && !reconPlanes[team]) { reconPlanes[team] = makePlane(team === 'allies' ? 0x4d5a36 : 0x5d6266); scene.add(reconPlanes[team]); }
+    if (!on && reconPlanes[team]) { scene.remove(reconPlanes[team]); reconPlanes[team] = null; }
+    const pl = reconPlanes[team];
+    if (pl) {
+      const a = now / 7000 + i * Math.PI, r = 1000;
+      pl.position.set(S.MAP_W / 2 + Math.cos(a) * r, 720, S.MAP_H / 2 + Math.sin(a) * r);
+      pl.rotation.set(0.35, -a - Math.PI, 0); pl.userData.prop.rotation.x += dt * 40;
+    }
+  }
+  // bomber flights cross the target line
+  for (let f = flights.length - 1; f >= 0; f--) {
+    const fl = flights[f], tt = (now - fl.arrive) / 1000, sp = 760;
+    if (tt > 4) { for (const pl of fl.planes) scene.remove(pl); flights.splice(f, 1); continue; }
+    fl.planes.forEach((pl, k) => {
+      const lat = (k - 1) * 70, back = Math.abs(k - 1) * 50;
+      const d = tt * sp - back;
+      pl.position.set(fl.x + Math.cos(fl.ang) * d - Math.sin(fl.ang) * lat, 430 + k * 12, fl.y + Math.sin(fl.ang) * d + Math.cos(fl.ang) * lat);
+      pl.rotation.set(0, -fl.ang, 0); pl.userData.prop.rotation.x += dt * 40;
+    });
+  }
+  // falling bombs / mortar shells
+  let n = 0;
+  for (let i = shells.length - 1; i >= 0; i--) {
+    const sh = shells[i], left = sh.at - now, fall = sh.kind === 'air' ? 800 : 450;
+    if (left < 0) { shells.splice(i, 1); continue; }
+    if (left > fall) continue;
+    let m = shellMeshes[n];
+    if (!m) { m = new THREE.Mesh(new THREE.CapsuleGeometry(3, 12, 4, 8), M.dark); scene.add(m); shellMeshes[n] = m; }
+    m.visible = true; m.position.set(sh.x, 4 + (left / fall) * (sh.kind === 'air' ? 420 : 320), sh.y);
+    n++;
+  }
+  for (let i = n; i < shellMeshes.length; i++) shellMeshes[i].visible = false;
+}
+function teamRecon() { return !!(you && match.rc && match.rc[you.team === 'allies' ? 0 : 1] > 0); }
+function streakHud() {
+  if (!you) return '';
+  const st = you.st || 0, have = you.ks || [];
+  const next = S.STREAK_IDS.find((id) => S.STREAKS[id].kills > st);
+  let html = `<div class="ks-line">Streak <b>${st}</b>${next ? ` &middot; ${esc(S.STREAKS[next].name)} at ${S.STREAKS[next].kills}` : ''}</div>`;
+  if (teamRecon()) html += `<div class="ks-line ks-on">Recon plane overhead ${Math.ceil(match.rc[you.team === 'allies' ? 0 : 1] / 1000)}s</div>`;
+  for (const id of have) html += `<button class="ks-btn" data-ks="${id}">${isTouch ? '' : '[' + esc(keyName(settings.binds[KS_BIND[id]])) + '] '}${esc(S.STREAKS[id].name)}</button>`;
+  return html;
 }
 
 function handleEvent(e, now) {
@@ -468,14 +610,16 @@ function handleEvent(e, now) {
     case 'rg': noise(700, 0.35, volAt(pred.x, pred.y) * 0.5); if (e.i === myId) { vmImpulse(0.08); if (vm && vm.gun.parts.rifleNade) vm.gun.parts.rifleNade.visible = false; } break;
     case 'end': match.winner = e.w; break;
     case 'obj': objNotice(e, now); break;
+    case 'ksE': if (e.i === myId) streakEarned(e.k, now); break;
+    case 'ks': streakUsed(e, now); break;
   }
 }
 
 // ================================================================= THREE
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isTouch, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio || 1, isTouch ? 1.5 : 2));
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: settings.quality === 'high', powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, settings.quality === 'low' ? 1 : isTouch ? 1.5 : 2));
 renderer.autoClear = false;
-renderer.shadowMap.enabled = !isTouch;
+renderer.shadowMap.enabled = settings.quality === 'high';
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
@@ -1407,7 +1551,7 @@ let moveStick = null;
 const lookPointers = new Map();
 const STICK_R = 60;
 
-const inGame = () => joined && $('loadoutScreen').classList.contains('hidden') && $('pause').classList.contains('hidden') && $('lobbyScreen').classList.contains('hidden');
+const inGame = () => joined && $('loadoutScreen').classList.contains('hidden') && $('pause').classList.contains('hidden') && $('lobbyScreen').classList.contains('hidden') && $('settingsScreen').classList.contains('hidden');
 function requestLock() { if (!isTouch && canvas.requestPointerLock) { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignore */ } } }
 document.addEventListener('pointerlockerror', () => { if (joined && inGame()) $('pause').classList.remove('hidden'); });
 document.addEventListener('pointerlockchange', () => {
@@ -1418,31 +1562,48 @@ document.addEventListener('pointerlockchange', () => {
 });
 $('resume').addEventListener('click', () => { $('pause').classList.add('hidden'); requestLock(); });
 $('pauseLoadout').addEventListener('click', () => { $('pause').classList.add('hidden'); toggleLoadout(true); });
+$('pauseLeave').addEventListener('click', () => leaveMatch());
 
 addEventListener('keydown', (e) => {
+  if (rebinding) return;
   if (!joined) return;
-  if (e.code === 'Tab') { e.preventDefault(); toggleScores(true); return; }
-  if (e.code === 'KeyL') { toggleLoadout(); return; }
+  const act = actionFor(e.code);
+  if (act === 'scores') { e.preventDefault(); toggleScores(true); return; }
+  if (act === 'loadout') { toggleLoadout(); return; }
   if (!inGame()) return;
   keys[e.code] = true;
+  if (act === 'jump' || act === 'holdCrouch' || e.code === 'Tab') e.preventDefault();
   if (e.repeat) return;
-  if (e.code === 'KeyR') send({ t: 'reload' });
-  if (e.code === 'KeyQ' || (e.code === 'Digit1' && you && you.slot === 1) || (e.code === 'Digit2' && you && you.slot === 0)) send({ t: 'swap' });
-  if (e.code === 'KeyG') send({ t: 'nade' });
-  if (e.code === 'KeyV' || e.code === 'KeyF') send({ t: 'melee' });
-  if (e.code === 'KeyB') send({ t: 'rg' });
-  if (e.code === 'KeyC') { crouchDownAt = performance.now(); if (proneOn) { proneOn = false; crouchOn = true; } else crouchOn = !crouchOn; }
-  if (e.code === 'KeyZ') { proneOn = !proneOn; if (proneOn) crouchOn = false; }
-  if (e.code === 'Space') { e.preventDefault(); pressJump(); }
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { crouchOn = false; proneOn = false; }
+  if (e.code === 'Digit1' && you && you.slot === 1) send({ t: 'swap' });
+  if (e.code === 'Digit2' && you && you.slot === 0) send({ t: 'swap' });
+  switch (act) {
+    case 'reload': send({ t: 'reload' }); break;
+    case 'swap': send({ t: 'swap' }); break;
+    case 'grenade': send({ t: 'nade' }); break;
+    case 'melee': send({ t: 'melee' }); break;
+    case 'rifleNade': send({ t: 'rg' }); break;
+    case 'crouch': crouchDownAt = performance.now(); if (proneOn) { proneOn = false; crouchOn = true; } else crouchOn = !crouchOn; break;
+    case 'prone': proneOn = !proneOn; if (proneOn) crouchOn = false; break;
+    case 'jump': pressJump(); break;
+    case 'sprint': crouchOn = false; proneOn = false; break;
+    case 'ks1': useStreak('recon'); break;
+    case 'ks2': useStreak('air'); break;
+    case 'ks3': useStreak('mortar'); break;
+  }
 });
-addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'Tab') toggleScores(false); if (e.code === 'KeyC') crouchDownAt = 0; if (e.code === 'Space') jumpHeld = false; });
+addEventListener('keyup', (e) => {
+  keys[e.code] = false;
+  const act = actionFor(e.code);
+  if (act === 'scores') toggleScores(false);
+  if (act === 'crouch') crouchDownAt = 0;
+  if (act === 'jump') jumpHeld = false;
+});
 // Jump: from prone you rise to a crouch, from a crouch you stand, standing you jump.
 function pressJump() {
   if (proneOn) { proneOn = false; crouchOn = true; return; }
   if (crouchOn) { crouchOn = false; return; }
   jumpHeld = true;
-  setTimeout(() => { if (!keys.Space) jumpHeld = false; }, 120);
+  setTimeout(() => { if (!keys[settings.binds.jump]) jumpHeld = false; }, 120);
 }
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = mouseRight = false; fireBtns.clear(); });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -1486,7 +1647,7 @@ addEventListener('mousemove', (e) => {
   if (!locked || !inGame()) return;
   const k = 0.0022 * sens * lookScale();
   yaw += e.movementX * k;
-  pitch = S.clamp(pitch - e.movementY * k, -1.45, 1.45);
+  pitch = S.clamp(pitch - e.movementY * k * (settings.invertY ? -1 : 1), -1.45, 1.45);
 });
 addEventListener('pointermove', (e) => {
   if (e.pointerType === 'mouse') return;
@@ -1495,7 +1656,7 @@ addEventListener('pointermove', (e) => {
   if (lp && inGame()) {
     const k = 0.0055 * sens * lookScale() * (assistTarget ? 0.55 : 1);
     yaw += (e.clientX - lp.x) * k;
-    pitch = S.clamp(pitch - (e.clientY - lp.y) * k, -1.45, 1.45);
+    pitch = S.clamp(pitch - (e.clientY - lp.y) * k * (settings.invertY ? -1 : 1), -1.45, 1.45);
     lp.x = e.clientX; lp.y = e.clientY;
   }
 });
@@ -1507,7 +1668,7 @@ function endPointer(e) {
 }
 addEventListener('pointerup', endPointer);
 addEventListener('pointercancel', endPointer);
-function lookScale() { const st = myStats(); return adsT > 0.5 ? (st.zoom > 1 ? 0.28 : 0.65) : 1; }
+function lookScale() { const st = myStats(); return adsT > 0.5 ? (st.zoom > 1 ? 0.28 : 0.65) * settings.adsSens : 1; }
 
 function stickVec(s) {
   if (!s) return [0, 0, 0];
@@ -1587,6 +1748,8 @@ function showMenu(err) {
   lobbyInfo = null; lastLobbyState = null;
   if (document.pointerLockElement) document.exitPointerLock();
   for (const id of [...soldiers.keys()]) removeSoldier(id);
+  for (const f of flights) for (const pl of f.planes) scene.remove(pl);
+  flights.length = 0; shells.length = 0;
   showScreen('menu');
   $('err').textContent = err || '';
   loadoutSummary();
@@ -1606,6 +1769,63 @@ $('btnCreate').addEventListener('click', () => { showScreen('createScreen'); if 
 $('btnBrowse').addEventListener('click', () => { showScreen('browseScreen'); refreshLobbies(); browseTimer = setInterval(refreshLobbies, 4000); });
 $('offline').addEventListener('click', () => { phoneFullscreen(); playOffline(); });
 $('btnArmory').addEventListener('click', () => { showScreen('armory'); menuLoadout.render(); });
+$('btnSettings').addEventListener('click', () => openSettings());
+$('ksPanel').addEventListener('click', (e) => { const b = e.target.closest('button[data-ks]'); if (b) useStreak(b.dataset.ks); });
+$('pauseSettings').addEventListener('click', () => { $('pause').classList.add('hidden'); openSettings(); });
+$('loadoutSettings').addEventListener('click', () => { $('loadoutScreen').classList.add('hidden'); openSettings(); });
+
+let rebinding = null;
+function openSettings() {
+  if (document.pointerLockElement) document.exitPointerLock();
+  $('settingsScreen').classList.remove('hidden');
+  renderBinds();
+  $('adsSens').value = settings.adsSens; $('adsSensVal').textContent = (+settings.adsSens).toFixed(2);
+  $('invertY').checked = !!settings.invertY;
+  $('fovSet').value = settings.fov; $('fovVal').textContent = settings.fov;
+  $('volSet').value = settings.volume; $('volVal').textContent = Math.round(settings.volume * 100) + '%';
+  $('quality').value = settings.quality;
+}
+function closeSettings() {
+  rebinding = null;
+  $('settingsScreen').classList.add('hidden');
+  if (!joined) return;
+  if (!$('lobbyScreen').classList.contains('hidden')) return;
+  if (!isTouch) { $('pause').classList.remove('hidden'); }
+}
+$('settingsBack').addEventListener('click', closeSettings);
+for (const b of document.querySelectorAll('#settingsTabs button')) b.addEventListener('click', () => {
+  for (const o of document.querySelectorAll('#settingsTabs button')) o.classList.toggle('on', o === b);
+  for (const t of document.querySelectorAll('#settingsScreen .tab')) t.classList.toggle('hidden', t.id !== 'tab-' + b.dataset.tab);
+});
+function renderBinds() {
+  const el = $('bindList');
+  el.innerHTML = Object.keys(DEFAULT_BINDS).map((a) => `<div class="bind-row"><span>${esc(BIND_LABELS[a])}</span><button data-bind="${a}" class="${rebinding === a ? 'wait' : ''}">${rebinding === a ? 'Press a key…' : esc(keyName(settings.binds[a]))}</button></div>`).join('');
+  for (const b of el.querySelectorAll('button[data-bind]')) b.addEventListener('click', () => { rebinding = b.dataset.bind; renderBinds(); });
+}
+// while rebinding, the next key press is captured before the game sees it
+addEventListener('keydown', (e) => {
+  if (!rebinding) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (e.code !== 'Escape') {
+    const old = settings.binds[rebinding], other = actionFor(e.code);
+    if (other && other !== rebinding) settings.binds[other] = old; // swap with whatever used that key
+    settings.binds[rebinding] = e.code;
+    saveSettings();
+  }
+  rebinding = null; renderBinds(); updateHelp();
+}, true);
+$('resetBinds').addEventListener('click', () => { settings.binds = Object.assign({}, DEFAULT_BINDS); saveSettings(); renderBinds(); updateHelp(); });
+$('adsSens').addEventListener('input', () => { settings.adsSens = +$('adsSens').value; $('adsSensVal').textContent = settings.adsSens.toFixed(2); saveSettings(); });
+$('invertY').addEventListener('change', () => { settings.invertY = $('invertY').checked; saveSettings(); });
+$('fovSet').addEventListener('input', () => { settings.fov = +$('fovSet').value; $('fovVal').textContent = settings.fov; saveSettings(); });
+$('volSet').addEventListener('input', () => { settings.volume = +$('volSet').value; $('volVal').textContent = Math.round(settings.volume * 100) + '%'; if (master) master.gain.value = settings.volume; saveSettings(); });
+$('quality').addEventListener('change', () => { settings.quality = $('quality').value; saveSettings(); $('qualityNote').textContent = 'Restart the game (reload the page or reopen the app) to apply.'; });
+function updateHelp() {
+  if (isTouch) return;
+  const k = (a) => keyName(settings.binds[a]);
+  $('controlsHelp').innerHTML = `Click to lock the mouse &middot; ${k('forward')}${k('left')}${k('back')}${k('right')} move &middot; Left click fire &middot; Right click aim &middot; ${k('sprint')} sprint &middot; ${k('jump')} jump &middot; ${k('crouch')} crouch / slide (hold: prone) &middot; ${k('prone')} prone &middot; ${k('reload')} reload &middot; ${k('swap')} swap &middot; ${k('grenade')} grenade &middot; ${k('melee')} melee &middot; ${k('ks1')}/${k('ks2')}/${k('ks3')} killstreaks &middot; ${k('scores')} scores &middot; change keys in Settings`;
+}
+updateHelp();
 $('armoryBack').addEventListener('click', () => showMenu(''));
 $('server').value = loadSaved('fl_server', '');
 if (servedOverHttp) $('server').placeholder = 'Leave empty to use this site (' + location.host + ')';
@@ -1808,10 +2028,11 @@ function frame(now) {
         yaw += assistTarget.dyaw * r; pitch += assistTarget.dp * r;
       }
     } else {
-      fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
-      strafe = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
+      const K = settings.binds;
+      fwd = (keys[K.forward] || keys.ArrowUp ? 1 : 0) - (keys[K.back] || keys.ArrowDown ? 1 : 0);
+      strafe = (keys[K.right] || keys.ArrowRight ? 1 : 0) - (keys[K.left] || keys.ArrowLeft ? 1 : 0);
       ads = adsMode === 'toggle' ? adsLatched : mouseRight;
-      sprint = !!(keys.ShiftLeft || keys.ShiftRight) && fwd > 0;
+      sprint = !!keys[K.sprint] && fwd > 0;
       fire = mouseDown && locked;
     }
     // hold crouch to go prone
@@ -1820,7 +2041,7 @@ function frame(now) {
     sprintWas = sprint;
     if (crouchOn || proneOn) sprint = false;
     if (sprint) { ads = false; adsLatched = false; }
-    const holdCrouch = !isTouch && (keys.ControlLeft || keys.ControlRight);
+    const holdCrouch = !isTouch && !!keys[settings.binds.holdCrouch];
     mx = fwd * Math.cos(yaw) - strafe * Math.sin(yaw);
     my = fwd * Math.sin(yaw) + strafe * Math.cos(yaw);
     movingNow = Math.hypot(mx, my) > 0.1;
@@ -1848,7 +2069,7 @@ function frame(now) {
   landDip *= Math.pow(0.004, dt);
   slideTilt += ((pred.slide > 0 ? 1 : 0) - slideTilt) * Math.min(1, dt * 10);
   const scoped = st.zoom > 1 && adsT > 0.85;
-  const baseFov = isTouch ? 70 : 75;
+  const baseFov = settings.fov;
   const fov = (st.zoom > 1 ? baseFov + (baseFov / st.zoom - baseFov) * Math.max(0, (adsT - 0.6) / 0.4) : baseFov - 20 * adsT) + 7 * slideTilt * (1 - adsT);
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
   shake *= Math.pow(0.02, dt);
@@ -2051,6 +2272,7 @@ function frame(now) {
   }
 
   updateObjectives3D(now, players);
+  updateStreakFx(now, dt);
   renderer.clear();
   renderer.render(scene, camera);
   if (showVm) { renderer.clearDepth(); renderer.render(vmScene, vmCamera); }
@@ -2156,7 +2378,7 @@ function drawMinimap(players) {
   for (const [id, p] of players) {
     if (id === myId || !(p.f & 2)) continue;
     const team = p.f & 1 ? 'axis' : 'allies';
-    if (team !== you.team && !(p.f & 8)) continue;
+    if (team !== you.team && !(p.f & 8) && !teamRecon()) continue;
     c.fillStyle = team === you.team ? '#5aa0ff' : '#ff5040';
     c.beginPath(); c.arc(p.x, p.y, 34, 0, TAU); c.fill();
   }
@@ -2201,6 +2423,8 @@ function objectiveHud(now) {
 
 function updateHud(now) {
   if (!you) return;
+  const ksh = streakHud();
+  if (hudCache.ksh !== ksh) { hudCache.ksh = ksh; $('ksPanel').innerHTML = ksh; }
   const md = S.MODES[currentMode] || S.MODES.tdm;
   setText('modeLabel', `${md.name} · ${(S.MAPS[objMapId] || S.MAPS.ruins).name} · first to ${match.sl || md.def}`);
   const obh = objectiveHud(now);

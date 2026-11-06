@@ -111,6 +111,23 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
 #topbar .team { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,.5); padding: 4px 10px; border-radius: 6px; font-size: 22px; }
 #topbar .flag { font-size: 11px; letter-spacing: 2px; }
 #topbar .allies { border-bottom: 3px solid var(--allies); } #topbar .axis { border-bottom: 3px solid var(--axis); }
+.menu-row2 { margin-top: 4px; }
+.menu-row2 button.ghost { margin-top: 6px; }
+.tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.tabs button { background: #12110c; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; font-size: 14px; }
+.tabs button.on { border-color: var(--accent); background: #3b2f14; color: #ffe2a4; }
+.bind-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 14px; margin-bottom: 8px; }
+.bind-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; border-bottom: 1px solid rgba(90,84,64,.35); padding: 3px 0; }
+.bind-row button { min-width: 110px; background: #12110c; color: #ffe2a4; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-weight: bold; }
+.bind-row button.wait { border-color: var(--accent); background: #3b2f14; animation: blink 0.8s infinite; }
+@keyframes blink { 50% { opacity: .55; } }
+#settingsScreen { z-index: 25; }
+#ksPanel { position: absolute; left: max(16px, env(safe-area-inset-left)); bottom: max(46px, calc(env(safe-area-inset-bottom) + 38px)); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 13px; pointer-events: auto; }
+#ksPanel .ks-line { background: rgba(0,0,0,.5); padding: 3px 8px; border-radius: 5px; font-weight: normal; }
+#ksPanel .ks-line b { color: #ffe2a4; }
+#ksPanel .ks-on { color: #a8e08a; }
+#ksPanel .ks-btn { background: linear-gradient(#8a6a2a, #5d4719); color: #fff4d6; border: 1px solid #c79a45; border-radius: 6px; padding: 6px 10px; font-weight: bold; font-size: 13px; animation: blink 1.2s infinite; }
+@media (pointer: coarse) { #ksPanel { bottom: auto; top: max(110px, calc(env(safe-area-inset-top) + 104px)); left: max(176px, calc(env(safe-area-inset-left) + 168px)); } }
 #modeLabel { position: absolute; top: max(52px, calc(env(safe-area-inset-top) + 46px)); left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); letter-spacing: 1px; white-space: nowrap; }
 #objbar { position: absolute; top: max(70px, calc(env(safe-area-inset-top) + 64px)); left: 50%; transform: translateX(-50%); display: flex; gap: 6px; white-space: nowrap; }
 #objbar .ob { position: relative; overflow: hidden; display: inline-block; min-width: 30px; text-align: center; padding: 4px 9px; border-radius: 6px; background: rgba(0,0,0,.55); border: 2px solid #d8d3c0; font-size: 14px; }

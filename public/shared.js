@@ -348,6 +348,13 @@
     hq: { name: 'Headquarters', short: 'HQ', desc: 'Hold the active HQ zone to score. It moves every minute.', scores: [100, 150, 200, 300], def: 200, unit: 'points' },
   };
   const MODE_IDS = Object.keys(MODES);
+  // Killstreaks: earned by kills in a row without dying (killstreak kills don't count)
+  const STREAKS = {
+    recon: { name: 'Recon Plane', kills: 3, desc: 'Shows every enemy on your team\'s minimap for 30 seconds.', ms: 30000 },
+    air: { name: 'Airstrike', kills: 5, desc: 'Bombers drop a line of bombs through the spot you are looking at.' },
+    mortar: { name: 'Mortar Barrage', kills: 7, desc: 'Shells rain down on enemy positions.' },
+  };
+  const STREAK_IDS = Object.keys(STREAKS);
 
   // the active map's walls and spawns (the same array objects are refilled by useMap)
   const WALLS = [];
@@ -584,7 +591,7 @@
 
   const api = {
     MAP_W, MAP_H, PLAYER_R, BASE_SPEED, MAX_HP, SCORE_LIMIT, MATCH_MS, MAX_ATTACHMENTS, MAX_SEC_ATTACHMENTS,
-    HEAD_ZONE, HEADSHOT_MULT, WEAPONS, ATTACHMENTS, WALLS, SPAWNS, MAPS, MAP_IDS, MODES, MODE_IDS, HEIGHTS, useMap,
+    HEAD_ZONE, HEADSHOT_MULT, WEAPONS, ATTACHMENTS, WALLS, SPAWNS, MAPS, MAP_IDS, MODES, MODE_IDS, STREAKS, STREAK_IDS, HEIGHTS, useMap,
     computeStats, sanitizeLoadout, cleanAtts, resolveCircle, moveCircle, rayWalls, rayWorld, rayCylinder, rayCircle,
     hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, headZone, clamp,
     groundAt, stepMove, newMoveState, GRAVITY, JUMP_V,

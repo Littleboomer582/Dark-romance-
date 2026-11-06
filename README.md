@@ -55,6 +55,15 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - **Slide:** sprint, then press crouch.
   - **Prone:** slow, but steadier and harder to hit; the bipod works prone.
   - Jumping makes shots inaccurate.
+- **Killstreaks**: earned by kills in a row without dying.
+  - **3 kills: Recon Plane.** Every enemy shows on your team's minimap for 30 seconds.
+  - **5 kills: Airstrike.** Bombers drop a line of bombs through the spot you're looking at.
+  - **7 kills: Mortar Barrage.** Shells rain on enemy positions.
+  - Everyone hears a warning before strikes land, and walls give cover. Bots use killstreaks too.
+- **Settings screen**:
+  - Rebind every key.
+  - Mouse: look sensitivity, aiming sensitivity, hold or toggle aim, and invert-Y.
+  - Display and sound: field of view, master volume, and graphics quality.
 - **Real 3D ballistics**: headshots (x1.5 damage), crouching behind sandbags and crates, shooting over low cover, recoil, and grenades that arc and bounce.
 - Frag grenades, knife and bayonet melee, aiming down sights, sprinting, crouching, health that regenerates, a rotating minimap with radar, damage-direction indicators, a death cam, a killfeed and a scoreboard.
 - The server decides all hits (authoritative server). Your own movement is predicted on your device so it feels responsive.
@@ -129,9 +138,10 @@ If the app is hosted somewhere other than the game server, point it at the serve
 | Reload / Swap | R / Q or mouse wheel | **R** / **⇆** |
 | Grenade / Melee | G / V | **G** / **⚔** |
 | Rifle grenade | B | **RG** |
+| Killstreaks | 5 / 6 / 7 | tap the button that appears |
 | Scores / Loadout | Tab / L | ☰ / ⚙ |
 
-Look sensitivity and hold-or-toggle aiming are under **Loadout & Settings**.
+Every key can be changed in **Settings**, which is on the main menu, the pause screen and the loadout screen.
 
 ## Project layout
 

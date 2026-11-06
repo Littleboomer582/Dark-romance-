@@ -35,7 +35,10 @@
         <button id="offline" class="big alt">OFFLINE VS BOTS</button>
       </div>
       <div id="loadoutSummary" class="lo-summary"></div>
-      <button id="btnArmory" class="ghost">LOADOUT &amp; SETTINGS</button>
+      <div class="row menu-row2">
+        <button id="btnArmory" class="ghost">LOADOUT</button>
+        <button id="btnSettings" class="ghost">SETTINGS</button>
+      </div>
       <button id="install" class="ghost hidden">Install as app</button>
       <p class="help" id="controlsHelp"></p>
       <p class="err" id="err"></p>
@@ -47,14 +50,8 @@
     <div class="panel">
       <h2>Loadout</h2>
       <div id="loadoutMenu"></div>
-      <h2>Settings</h2>
+      <h2>Offline match</h2>
       <div class="row">
-        <label>Look sensitivity <span id="sensVal"></span>
-          <input id="sens" type="range" min="0.2" max="3" step="0.05" value="1">
-        </label>
-        <label>Aim down sights (mouse)
-          <select id="adsMode"><option value="hold">Hold right mouse button</option><option value="toggle">Toggle: click right mouse button</option></select>
-        </label>
         <label>Offline map<select id="offMap"></select></label>
         <label>Offline mode<select id="offMode"></select></label>
       </div>
@@ -140,6 +137,7 @@
       <div class="row">
         <button id="loadoutSave" class="big">SAVE</button>
         <button id="switchTeam" class="ghost">Switch team</button>
+        <button id="loadoutSettings" class="ghost">Settings</button>
         <button id="leave" class="ghost">Leave match</button>
       </div>
     </div>
@@ -152,6 +150,58 @@
       <p class="tag">Click to return to the fight.</p>
       <button id="resume" class="big">RESUME</button>
       <button id="pauseLoadout" class="ghost">Change loadout</button>
+      <button id="pauseSettings" class="ghost">Settings</button>
+      <button id="pauseLeave" class="ghost">Leave match</button>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="settingsScreen" class="screen hidden">
+    <div class="panel wide">
+      <h2>Settings</h2>
+      <div id="settingsTabs" class="tabs">
+        <button data-tab="controls" class="on">Controls</button>
+        <button data-tab="mouse">Mouse &amp; Aim</button>
+        <button data-tab="video">Display &amp; Sound</button>
+      </div>
+      <div class="tab" id="tab-controls">
+        <p class="tag">Click an action, then press the key you want. Esc cancels. Picking a key that is already used swaps the two.</p>
+        <div id="bindList" class="bind-list"></div>
+        <button id="resetBinds" class="ghost">Reset controls to default</button>
+      </div>
+      <div class="tab hidden" id="tab-mouse">
+        <div class="row">
+          <label>Look sensitivity <span id="sensVal"></span>
+            <input id="sens" type="range" min="0.2" max="3" step="0.05" value="1">
+          </label>
+          <label>Aiming sensitivity <span id="adsSensVal"></span>
+            <input id="adsSens" type="range" min="0.3" max="2" step="0.05" value="1">
+          </label>
+        </div>
+        <div class="row">
+          <label>Aim down sights (mouse)
+            <select id="adsMode"><option value="hold">Hold right mouse button</option><option value="toggle">Toggle: click right mouse button</option></select>
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" id="invertY"> Invert look up / down</label>
+      </div>
+      <div class="tab hidden" id="tab-video">
+        <div class="row">
+          <label>Field of view <span id="fovVal"></span>
+            <input id="fovSet" type="range" min="60" max="100" step="1" value="75">
+          </label>
+          <label>Master volume <span id="volVal"></span>
+            <input id="volSet" type="range" min="0" max="1" step="0.05" value="0.8">
+          </label>
+        </div>
+        <div class="row">
+          <label>Graphics quality
+            <select id="quality"><option value="high">High (shadows, sharper)</option><option value="low">Low (faster on phones / older PCs)</option></select>
+          </label>
+        </div>
+        <p class="lo-desc" id="qualityNote"></p>
+      </div>
+      <button id="settingsBack" class="big">DONE</button>
     </div>
   </div>
 
@@ -168,6 +218,7 @@
     <div id="modeLabel"></div>
     <div id="objbar"></div>
     <div id="killfeed"></div>
+    <div id="ksPanel"></div>
     <div id="bottomLeft">
       <div id="hpBar"><div id="hpFill"></div></div>
       <div id="hpText">100</div>
