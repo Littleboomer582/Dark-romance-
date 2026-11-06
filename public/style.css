@@ -148,8 +148,9 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
 #tFire2 { width: 64px; height: 64px; left: calc(max(16px, env(safe-area-inset-left)) + 24px); bottom: 150px; font-size: 13px; }
 #tAds { width: 62px; height: 62px; right: calc(max(16px, env(safe-area-inset-right)) + 20px); bottom: 190px; }
 #tCrouch { width: 54px; height: 54px; right: calc(max(16px, env(safe-area-inset-right)) + 220px); bottom: 70px; font-size: 22px; }
+#tJump { width: 62px; height: 62px; right: calc(max(16px, env(safe-area-inset-right)) + 20px); bottom: 112px; font-size: 13px; }
 #tReload { width: 52px; height: 52px; right: calc(max(16px, env(safe-area-inset-right)) + 220px); bottom: 140px; }
-#tSwap { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 26px); bottom: 118px; font-size: 20px; }
+#tSwap { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 82px); bottom: 262px; font-size: 20px; }
 #tNade { width: 52px; height: 52px; right: calc(max(16px, env(safe-area-inset-right)) + 130px); bottom: 220px; }
 #tMelee { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 200px); bottom: 210px; font-size: 20px; }
 #tRg { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 262px); bottom: 210px; font-size: 13px; }

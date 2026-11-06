@@ -319,7 +319,7 @@ class Room {
     p.guns = [makeGun(p.loadout.primary, p.loadout.atts), makeGun(p.loadout.secondary, p.loadout.secAtts)];
     p.rgren = p.guns[0].stats.rifleNades;
     p.nextRg = 0;
-    p.crouch = false;
+    Object.assign(p, S.newMoveState(p.x, p.y));
     p.pitch = 0;
     p.slot = 0;
     p.reloadEnd = 0;
@@ -369,14 +369,14 @@ class Room {
   fire(p, now) {
     const g = this.gun(p);
     const st = g.stats;
-    let spread = S.currentSpread(st, p.ads, p.moving, p.crouch, p.sprint);
+    let spread = S.currentSpread(st, p.ads, p.moving, p.stance, p.sprintActive, p.air);
     if (p.bot) spread = Math.max(spread * 2, 0.025); // bots are less accurate than players
     p.spawnProtectUntil = 0;
     g.ammo--;
     p.nextShot = now + st.rate;
     if (!st.suppressed) p.radarUntil = now + 2000;
     const maxD = st.range * (st.pellets > 1 ? 1.4 : 2.2);
-    const eye = S.eyeHeight(p.crouch);
+    const eye = p.z + S.eyeHeight(p.stance);
     const hits = new Map();
     for (let i = 0; i < st.pellets; i++) {
       // random point in a cone around the aim direction
@@ -389,14 +389,14 @@ class Room {
       let hd = wallD, hit = null;
       for (const q of this.players.values()) {
         if (!q.alive || q.team === p.team) continue;
-        const t = S.rayCylinder(p.x, p.y, eye, dx, dy, dh, q.x, q.y, S.PLAYER_R, S.bodyHeight(q.crouch));
+        const t = S.rayCylinder(p.x, p.y, eye - q.z, dx, dy, dh, q.x, q.y, S.PLAYER_R, S.bodyHeight(q.stance));
         if (t < hd) { hd = t; hit = q; }
       }
       const endD = hit ? hd : thinD;
       this.events.push({ e: 's', i: p.id, x: p.x | 0, y: p.y | 0, z: eye, a: +yaw.toFixed(4), q: +pitch.toFixed(4), d: endD | 0, w: g.id, s: st.noFlash ? 1 : 0, u: st.suppressed ? 1 : 0, p: i, k: hit ? 1 : 0 });
       if (hit) {
         const hh = eye + dh * hd;
-        const hs = hh > S.bodyHeight(hit.crouch) - S.HEAD_ZONE;
+        const hs = hh - hit.z > S.bodyHeight(hit.stance) - S.headZone(hit.stance);
         let dmg = st.dmg * (hd > st.range ? 0.65 : 1) * (hs ? S.HEADSHOT_MULT : 1);
         if (hd > thinD) dmg *= 0.7; // penetrated cover
         const prev = hits.get(hit) || { dmg: 0, hs: false };
@@ -435,7 +435,7 @@ class Room {
   }
 
   launch(p, kind, speed, up, now, fuse) {
-    const eye = S.eyeHeight(p.crouch);
+    const eye = p.z + S.eyeHeight(p.stance);
     const cp = Math.cos(p.pitch);
     const dx = Math.cos(p.ang) * cp, dy = Math.sin(p.ang) * cp, dh = Math.sin(p.pitch);
     const start = S.moveCircle(p.x, p.y, dx * 18, dy * 18, 4);
@@ -469,7 +469,7 @@ class Room {
     const name = n.kind === 'rg' ? 'Rifle Grenade' : 'Frag Grenade';
     for (const q of this.players.values()) {
       if (!q.alive || (q.team === n.team && q.id !== n.owner)) continue;
-      const qh = S.bodyHeight(q.crouch) * 0.5;
+      const qh = q.z + S.bodyHeight(q.stance) * 0.5;
       const d = Math.hypot(q.x - n.x, q.y - n.y, (qh - n.h) * 0.6);
       if (d > 200 || !S.hasLOS3(n.x, n.y, Math.max(n.h, 6), q.x, q.y, qh)) continue;
       q.spawnProtectUntil = Math.min(q.spawnProtectUntil, now);
@@ -496,7 +496,7 @@ class Room {
         let hitPlayer = false;
         for (const q of this.players.values()) {
           if (!q.alive || q.team === n.team) continue;
-          if (S.rayCylinder(n.x, n.y, n.h, sx / len, sy / len, sh / len, q.x, q.y, S.PLAYER_R + 4, S.bodyHeight(q.crouch)) <= len) hitPlayer = true;
+          if (S.rayCylinder(n.x, n.y, n.h - q.z, sx / len, sy / len, sh / len, q.x, q.y, S.PLAYER_R + 4, S.bodyHeight(q.stance)) <= len) hitPlayer = true;
         }
         const k = Math.min(t, len) / len;
         n.x += sx * k; n.y += sy * k; n.h += sh * k;
@@ -537,9 +537,12 @@ class Room {
       g.ammo += take; g.reserve -= take;
       p.reloadEnd = 0;
     }
-    if (p.input.fire && !p.sprintActive && !p.reloadEnd && now >= p.nextShot && this.state === 'playing') {
+    // a trigger pull is remembered briefly, so a quick click (or one made while the gun is still
+    // cycling) always fires even if the button was released before this tick
+    const pulled = p.firePressedAt && now - p.firePressedAt < 350;
+    if ((p.input.fire || pulled) && !p.sprintActive && !p.reloadEnd && now >= p.nextShot && this.state === 'playing') {
       if (g.ammo > 0) {
-        if (g.stats.auto || !p.triggerHeld) this.fire(p, now);
+        if (g.stats.auto || !p.triggerHeld || pulled) { this.fire(p, now); p.firePressedAt = 0; }
       } else if (g.reserve > 0) this.startReload(p, now);
       else if (p.slot === 0) this.swap(p, now);
     }
@@ -560,13 +563,11 @@ class Room {
       const mx = S.clamp(+mxRaw || 0, -1, 1), my = S.clamp(+myRaw || 0, -1, 1);
       p.ads = !!(flags & 1);
       p.sprint = !!(flags & 2);
-      p.crouch = !!(flags & 4);
       p.moving = Math.hypot(mx, my) > 0.1;
-      p.sprintActive = p.sprint && !p.ads && !p.crouch && p.moving;
       if (!p.alive || this.state !== 'playing') continue;
-      const sp = S.moveSpeed(this.gun(p).stats, p.ads, p.sprint, p.crouch);
-      const pos = S.applyMove(p.x, p.y, mx, my, dt, sp);
-      p.x = pos[0]; p.y = pos[1];
+      S.stepMove(p, mx, my, flags | 0, dt, this.gun(p).stats);
+      p.sprintActive = p.ps;
+      p.crouch = p.stance > 0;
     }
   }
 
@@ -605,8 +606,9 @@ class Room {
     const ps = [];
     for (const p of this.players.values()) {
       const flags = (p.team === 'axis' ? 1 : 0) | (p.alive ? 2 : 0) | (p.ads ? 4 : 0) | (p.radarUntil > now ? 8 : 0)
-        | (p.spawnProtectUntil > now ? 16 : 0) | (p.reloadEnd ? 32 : 0) | (p.crouch ? 64 : 0) | (p.sprintActive ? 128 : 0);
-      ps.push({ i: p.id, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, a: +p.ang.toFixed(3), q: +(p.pitch || 0).toFixed(2), h: Math.ceil(p.hp), f: flags, w: this.gun(p).id + ':' + this.gun(p).stats.atts.join(',') });
+        | (p.spawnProtectUntil > now ? 16 : 0) | (p.reloadEnd ? 32 : 0) | (p.stance === 1 ? 64 : 0) | (p.sprintActive ? 128 : 0)
+        | (p.stance === 2 ? 256 : 0) | (p.slide > 0 ? 512 : 0) | (p.air ? 1024 : 0);
+      ps.push({ i: p.id, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, z: Math.round(p.z), a: +p.ang.toFixed(3), q: +(p.pitch || 0).toFixed(2), h: Math.ceil(p.hp), f: flags, w: this.gun(p).id + ':' + this.gun(p).stats.atts.join(',') });
     }
     const base = {
       t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, n.kind === 'rg' ? 1 : 0]), sc: [Math.floor(this.score.allies), Math.floor(this.score.axis)],
@@ -621,6 +623,7 @@ class Room {
         rl: p.reloadEnd ? Math.max(0, p.reloadEnd - now) / g.stats.reload : 0, nd: p.nades, rg: p.rgren || 0, team: p.team,
         ri: p.alive ? 0 : Math.max(0, p.respawnAt - now), kb: p.killedBy, kw: p.killedWith, kx: p.killerPos,
         g: p.guns.map((x) => [x.id, x.stats.atts]),
+        mv: [+p.z.toFixed(3), +p.vz.toFixed(3), +p.slide.toFixed(4), +p.sdx.toFixed(4), +p.sdy.toFixed(4), +p.slideCd.toFixed(4), p.pc ? 1 : 0, p.ps ? 1 : 0, p.pj ? 1 : 0],
       };
       p.ws.send(JSON.stringify(base));
     }
@@ -638,6 +641,7 @@ function basePlayer(name) {
     id: nextId++, name, team: 'allies', x: 0, y: 0, ang: 0, hp: 100, alive: false, kills: 0, deaths: 0,
     input: { fire: false }, lastSeq: 0, moveBudget: 0.3, ads: false, sprint: false, moving: false, triggerHeld: false,
     pendingLoadout: S.sanitizeLoadout({}), guns: [], slot: 0, nades: 2, respawnAt: 0, pitch: 0, crouch: false, rgren: 0,
+    z: 0, vz: 0, stance: 0, slide: 0, sdx: 0, sdy: 0, slideCd: 0, pc: false, ps: false, pj: false, air: false,
   };
 }
 
@@ -685,7 +689,7 @@ function botThink(room, p, now, dt) {
     for (const q of room.players.values()) {
       if (!q.alive || q.team === p.team) continue;
       const d = Math.hypot(q.x - p.x, q.y - p.y);
-      if (d < 1300 && d < bd && S.hasLOS3(p.x, p.y, S.eyeHeight(p.crouch), q.x, q.y, S.bodyHeight(q.crouch) - 10)) { bd = d; best = q; }
+      if (d < 1300 && d < bd && S.hasLOS3(p.x, p.y, p.z + S.eyeHeight(p.stance), q.x, q.y, q.z + S.bodyHeight(q.stance) - 6)) { bd = d; best = q; }
     }
     if (best && best !== b.target) { b.acquiredAt = now; b.aimErr = (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.5); }
     b.target = best;
@@ -706,13 +710,13 @@ function botThink(room, p, now, dt) {
     const want = Math.atan2(dy, dx) + b.aimErr + (Math.random() - 0.5) * 0.04;
     let da = Math.atan2(Math.sin(want - p.ang), Math.cos(want - p.ang));
     p.ang += S.clamp(da, -7 * dt, 7 * dt);
-    const wantPitch = Math.atan2(S.bodyHeight(t.crouch) * 0.75 - S.eyeHeight(p.crouch), d) + b.aimErr * 0.3;
+    const wantPitch = Math.atan2(t.z + S.bodyHeight(t.stance) * 0.75 - p.z - S.eyeHeight(p.stance), d) + b.aimErr * 0.3;
     p.pitch += S.clamp(wantPitch - p.pitch, -4 * dt, 4 * dt);
     ads = d > 300 && st.cls !== 'Shotgun';
     const ready = now - b.acquiredAt > 600;
     fire = ready && Math.abs(da) < 0.1 && d < st.range * 1.3;
     if (!st.auto) fire = fire && !p.triggerHeld;
-    if (now > b.strafeUntil) { b.strafe = Math.random() < 0.5 ? -1 : 1; b.strafeUntil = now + 600 + Math.random() * 1000; b.crouch = d > 450 && Math.random() < 0.35; }
+    if (now > b.strafeUntil) { b.strafe = Math.random() < 0.5 ? -1 : 1; b.strafeUntil = now + 600 + Math.random() * 1000; b.crouch = d > 450 && Math.random() < 0.35; b.prone = d > 650 && (st.cls === 'Bolt-Action' || st.cls === 'Machine Gun') && Math.random() < 0.4; }
     crouch = b.crouch;
     if (p.rgren > 0 && d > 300 && d < 900 && Math.random() < 0.004 * (dt * 60)) room.fireRifleNade(p, now);
     const ux = dx / d, uy = dy / d;
@@ -728,6 +732,7 @@ function botThink(room, p, now, dt) {
         mx = wx / wd * 0.9 - uy * b.strafe * 0.3; my = wy / wd * 0.9 + ux * b.strafe * 0.3;
       }
     }
+    if (b.prone && !goalObj) { crouch = 2; mx = 0; my = 0; } // snipers and gunners go prone at range
     if (Math.random() < 0.002 * (dt * 60) && p.nades > 0 && d > 220 && d < 550) { const sp = p.pitch; p.pitch = 0.35 + (d - 220) / 1200; room.throwNade(p, now); p.pitch = sp; }
     if (!goalObj) b.path = null;
   } else {
@@ -769,11 +774,14 @@ function botThink(room, p, now, dt) {
   p.input.fire = fire;
   p.ads = ads;
   p.sprint = sprint;
-  p.crouch = crouch;
+  p.crouch = !!crouch;
+  p.stance = crouch === 2 ? 2 : crouch ? 1 : 0;
+  p.z = 0; p.air = false; p.slide = 0;
   p.moving = Math.hypot(mx, my) > 0.1;
   p.sprintActive = sprint && !ads && !crouch && p.moving;
+  p.ps = p.sprintActive;
   if (room.state === 'playing') {
-    const pos = S.applyMove(p.x, p.y, mx, my, dt, S.moveSpeed(st, ads, sprint, crouch));
+    const pos = S.applyMove(p.x, p.y, mx, my, dt, S.moveSpeed(st, ads, sprint, p.stance));
     p.x = pos[0]; p.y = pos[1];
   }
 }
@@ -828,6 +836,7 @@ function connect(ws) {
         if (Array.isArray(m.l)) room.applyInputs(player, m.l.slice(0, 20));
         if (Number.isFinite(m.a) && player.alive) player.ang = m.a;
         if (Number.isFinite(m.p) && player.alive) player.pitch = S.clamp(m.p, -1.45, 1.45);
+        if (m.f && (m.pull || !player.input.fire) && player.alive) { player.firePressedAt = now; if (m.pull) player.triggerHeld = false; }
         player.input.fire = !!m.f;
         break;
       case 'reload': if (player.alive) room.startReload(player, now); break;

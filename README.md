@@ -4,7 +4,7 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
 
 ## Features
 
-- **7 maps**:
+- **8 maps**:
   - **Ruins:** bombed-out town.
   - **Village:** French farm houses, a barn and a fountain square.
   - **Winter Forest:** snowy pines, log piles, foxholes and falling snow.
@@ -12,6 +12,7 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - **Rail Yard:** a freight depot with boxcars, sheds, coal heaps and a water tower.
   - **Harbor:** warehouses and cargo split by a canal with two bridges. The water stops you walking, but bullets fly over it.
   - **Boot Camp:** a small, fast close-quarters arena inside a log palisade.
+  - **Main Street:** a compact home-front town block. A clapboard house faces a general store across a street with parked cars. Both buildings have windows you can shoot or jump through, and backyards have fences you can hop.
 - **4 game modes**:
   - **Team Deathmatch:** score kills.
   - **Domination:** capture flags A, B and C. Each flag held scores points.
@@ -49,6 +50,11 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - The Trench Gun pumps, the revolver cylinder swings out, and the double-barrel breaks open.
   - Magazines drop out and are replaced, while casings and shells eject.
 - **Gun feel**: spring recoil, weapon sway, muzzle smoke, a muzzle flash that lights the area, and layered gunshot audio plus mechanical sounds (bolt, magazine, Garand clip "ping").
+- **Movement**:
+  - **Jump** over sandbags, logs and fences, onto crates and car roofs, and through windows.
+  - **Slide:** sprint, then press crouch.
+  - **Prone:** slow, but steadier and harder to hit; the bipod works prone.
+  - Jumping makes shots inaccurate.
 - **Real 3D ballistics**: headshots (x1.5 damage), crouching behind sandbags and crates, shooting over low cover, recoil, and grenades that arc and bounce.
 - Frag grenades, knife and bayonet melee, aiming down sights, sprinting, crouching, health that regenerates, a rotating minimap with radar, damage-direction indicators, a death cam, a killfeed and a scoreboard.
 - The server decides all hits (authoritative server). Your own movement is predicted on your device so it feels responsive.
@@ -116,13 +122,16 @@ If the app is hosted somewhere other than the game server, point it at the serve
 | Look | Mouse (click to lock the pointer) | Drag on the right side of the screen (light aim assist) |
 | Fire | Left click | **FIRE** buttons (drag on them to aim while firing) |
 | Aim down sights | Right click | **AIM** |
-| Sprint / Crouch | Shift / C or Ctrl | stick / **↧** |
+| Sprint | Shift | push the stick all the way up |
+| Jump | Space | **JUMP** |
+| Crouch / Slide | C (while sprinting: slide), or hold Ctrl | **↧** (tap while sprinting: slide) |
+| Prone | Z, or hold C | hold **↧** |
 | Reload / Swap | R / Q or mouse wheel | **R** / **⇆** |
 | Grenade / Melee | G / V | **G** / **⚔** |
 | Rifle grenade | B | **RG** |
 | Scores / Loadout | Tab / L | ☰ / ⚙ |
 
-Look sensitivity is set on the main menu.
+Look sensitivity and hold-or-toggle aiming are under **Loadout & Settings**.
 
 ## Project layout
 

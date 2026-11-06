@@ -12,9 +12,12 @@
   const MATCH_MS = 10 * 60 * 1000;
   const MAX_ATTACHMENTS = 3;
   const MAX_SEC_ATTACHMENTS = 1;
-  const EYE = { stand: 60, crouch: 40 };
-  const BODY = { stand: 72, crouch: 50 };
-  const HEAD_ZONE = 13; // top N units of the body count as a headshot
+  // stance: 0 standing, 1 crouched (or sliding), 2 prone
+  const EYE = [60, 40, 15];
+  const BODY = [72, 50, 24];
+  const HEAD = [13, 12, 9]; // top N units of the body count as a headshot
+  const HEAD_ZONE = 13;
+  const GRAVITY = 900, JUMP_V = 300, STEP = 8, SLIDE_T = 0.8, SLIDE_CD = 1.1;
   const HEADSHOT_MULT = 1.5;
 
   // ---------------------------------------------------------------- weapons
@@ -156,7 +159,8 @@
   // k: wall | crate | sand | house | tree | log | rock | bunker | fence
   // water blocks walking but bullets and grenades pass over it
   const HEIGHTS = { wall: 130, crate: 48, sand: 34, house: 170, tree: 320, log: 30, rock: 64, bunker: 95, fence: 42,
-    boxcar: 112, shed: 150, coal: 70, post: 300, water: 1, warehouse: 190, cargo: 96, palisade: 210, hut: 140 };
+    boxcar: 112, shed: 150, coal: 70, post: 300, water: 1, warehouse: 190, cargo: 96, palisade: 210, hut: 140,
+    window: 38, hedge: 120, car: 53, truck: 92, planter: 36, store: 170 };
   const mirror = (list) => list.concat(list.map((r) => Object.assign({}, r, { x: MAP_W - r.x - r.w })));
   // a building made of wall segments with doorways ('n','s','e','w')
   function house(x, y, w, h, doors, t, k) {
@@ -276,6 +280,45 @@
   ];
   const campSpawns = (xs) => [[625, 640], [625, 800], [625, 960], [700, 700], [700, 900], [690, 620], [690, 980]].map(([x, y]) => ({ x: xs ? MAP_W - x : x, y }));
 
+  // a building whose walls have doors ('d') and windows ('w': a low sill you can shoot or jump through)
+  function building(x, y, w, h, sides, k, t) {
+    t = t || 16; const out = [];
+    const run = (horiz, fixed, a0, a1, spec) => {
+      const n = spec.length, L = a1 - a0; let cur = a0;
+      const push = (a, b, kind) => { if (b - a < 2) return; out.push(horiz ? { x: a, y: fixed, w: b - a, h: t, k: kind } : { x: fixed, y: a, w: t, h: b - a, k: kind }); };
+      for (let i = 0; i < n; i++) {
+        const c = a0 + (L * (i + 1)) / (n + 1), ow = spec[i] === 'd' ? 100 : 72;
+        push(cur, c - ow / 2, k);
+        if (spec[i] === 'w') push(c - ow / 2, c + ow / 2, 'window');
+        cur = c + ow / 2;
+      }
+      push(cur, a1, k);
+    };
+    run(true, y, x, x + w, sides.n || ''); run(true, y + h - t, x, x + w, sides.s || '');
+    run(false, x, y + t, y + h - t, sides.w || ''); run(false, x + w - t, y + t, y + h - t, sides.e || '');
+    return out;
+  }
+  // mirror for the other team, swapping some building styles so the two sides look different
+  const mirrorSkin = (list, swap) => list.concat(list.map((r) => Object.assign({}, r, { x: MAP_W - r.x - r.w, k: swap[r.k] || r.k })));
+
+  // ---- Main Street: a compact home-front town block, a house facing a general store
+  const townLeft = [].concat(
+    building(600, 540, 300, 300, { n: 'w', s: 'w', e: 'dw', w: 'w' }, 'house'),
+    house(560, 980, 210, 170, 'e', 16, 'shed'),
+    [
+      { x: 540, y: 880, w: 300, h: 12, k: 'fence' }, { x: 840, y: 900, w: 12, h: 120, k: 'fence' },
+      { x: 960, y: 560, w: 56, h: 120, k: 'car' }, { x: 960, y: 1050, w: 56, h: 120, k: 'car' },
+      { x: 700, y: 420, w: 60, h: 60, k: 'crate' }, { x: 900, y: 420, w: 90, h: 30, k: 'planter' },
+      { x: 520, y: 680, w: 36, h: 36, k: 'crate' },
+    ]);
+  const townCenter = [
+    { x: 480, y: 330, w: 1440, h: 30, k: 'hedge' }, { x: 480, y: 1240, w: 1440, h: 30, k: 'hedge' },
+    { x: 480, y: 360, w: 30, h: 880, k: 'hedge' }, { x: 1890, y: 360, w: 30, h: 880, k: 'hedge' },
+    { x: 1168, y: 700, w: 64, h: 170, k: 'truck' },
+    { x: 1110, y: 470, w: 180, h: 30, k: 'planter' }, { x: 1110, y: 1110, w: 180, h: 30, k: 'planter' },
+  ];
+  const townSpawns = (flip) => [[540, 420], [540, 800], [540, 1180], [640, 440], [660, 1190], [600, 860], [880, 1190]].map(([x, y]) => ({ x: flip ? MAP_W - x : x, y }));
+
   const MAPS = {
     ruins: { name: 'Ruins', desc: 'Bombed-out town ruins', theme: 'ruins', walls: mirror(ruinsLeft).concat(ruinsCenter) },
     village: { name: 'Village', desc: 'French farm village', theme: 'village', walls: mirror(villageLeft).concat(villageCenter) },
@@ -286,6 +329,11 @@
     harbor: { name: 'Harbor', desc: 'Docks and warehouses split by a canal', theme: 'harbor', walls: mirror(harborLeft).concat(harborCenter),
       props: [{ type: 'bridge', x: 1150, y: 380, w: 100, h: 100 }, { type: 'bridge', x: 1150, y: 1120, w: 100, h: 100 }],
       obj: { dom: [[560, 800], [1200, 1170], [1840, 800]], hq: [[1200, 430], [720, 560], [1680, 1060], [720, 1060], [1680, 560]] } },
+    town: { name: 'Main Street', desc: 'Compact home-front town block: a house facing a general store', theme: 'town',
+      walls: mirrorSkin(townLeft, { house: 'store' }).concat(townCenter),
+      props: [{ type: 'street', x0: 1000, x1: 1400 }],
+      spawns: { allies: townSpawns(false), axis: townSpawns(true) },
+      obj: { dom: [[750, 690], [1200, 960], [1650, 690]], flags: [[600, 940], [1800, 940]], hq: [[1200, 960], [750, 690], [1650, 690], [1200, 620], [760, 1190]] } },
     camp: { name: 'Boot Camp', desc: 'Small, fast close-quarters arena', theme: 'camp', walls: mirror(campLeft).concat(campCenter),
       props: [{ type: 'tower', x: 1200, y: 800 }],
       spawns: { allies: campSpawns(false), axis: campSpawns(true) },
@@ -320,11 +368,14 @@
   // ---------------------------------------------------------------- physics
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
-  function resolveCircle(x, y, r) {
+  // z = feet height: anything you are standing above (minus a small step) does not block you
+  function resolveCircle(x, y, r, z) {
+    z = z || 0;
     x = clamp(x, r, MAP_W - r);
     y = clamp(y, r, MAP_H - r);
     for (let i = 0; i < WALLS.length; i++) {
       const w = WALLS[i];
+      if (w.k !== 'water' && w.ht <= z + STEP) continue;
       const cx = clamp(x, w.x, w.x + w.w);
       const cy = clamp(y, w.y, w.y + w.h);
       const dx = x - cx, dy = y - cy;
@@ -345,11 +396,11 @@
     return [x, y];
   }
 
-  function moveCircle(x, y, dx, dy, r) {
+  function moveCircle(x, y, dx, dy, r, z) {
     const dist = Math.hypot(dx, dy);
     const steps = Math.max(1, Math.ceil(dist / 8));
     for (let i = 0; i < steps; i++) {
-      const res = resolveCircle(x + dx / steps, y + dy / steps, r);
+      const res = resolveCircle(x + dx / steps, y + dy / steps, r, z);
       x = res[0]; y = res[1];
     }
     return [x, y];
@@ -428,15 +479,19 @@
     return rayWorld(x1, y1, h1, dx / d, dy / d, dh / d, d) >= d - 0.5;
   }
 
-  function moveSpeed(stats, ads, sprint, crouch) {
+  const stanceOf = (v) => (v === true ? 1 : v === false || v == null ? 0 : v);
+
+  function moveSpeed(stats, ads, sprint, stance) {
+    stance = stanceOf(stance);
     let s = BASE_SPEED * stats.speed;
-    if (crouch) s *= 0.55;
+    if (stance === 1) s *= 0.55;
+    if (stance === 2) s *= 0.26;
     if (ads) s *= stats.zoom > 1 ? 0.5 : 0.65;
-    else if (sprint && !crouch) s *= 1.35;
+    else if (sprint && stance === 0) s *= 1.35;
     return s;
   }
 
-  // Applies one movement input. Used identically by client prediction and server.
+  // Simple movement used by bots (always on the ground).
   function applyMove(x, y, mx, my, dt, speed) {
     const m = Math.hypot(mx, my);
     if (m < 0.08) return [x, y];
@@ -444,17 +499,71 @@
     return moveCircle(x, y, mx * speed * dt, my * speed * dt, PLAYER_R);
   }
 
-  // Effective cone of fire for the current state.
-  function currentSpread(st, ads, moving, crouch, sprint) {
-    let s = st.spread * (ads ? st.adsMult : 1) * (moving ? st.moveMult : 1);
-    if (st.bipod && ads && (!moving || crouch)) s *= 0.35;
-    if (crouch) s *= 0.8;
-    if (sprint && !ads && moving) s *= 1.5;
+  // Height of whatever you would be standing on at (x, y) given your feet height z.
+  function groundAt(x, y, z) {
+    let g = 0;
+    const r = PLAYER_R * 0.6;
+    for (let i = 0; i < WALLS.length; i++) {
+      const w = WALLS[i];
+      if (w.k === 'water' || w.ht > z + STEP || w.ht <= g) continue;
+      const cx = clamp(x, w.x, w.x + w.w), cy = clamp(y, w.y, w.y + w.h);
+      if ((x - cx) * (x - cx) + (y - cy) * (y - cy) < r * r) g = w.ht;
+    }
+    return g;
+  }
+
+  // Player movement state used identically by client prediction and the server.
+  // flags: 1 aim, 2 sprint, 4 crouch, 8 jump, 16 prone
+  function newMoveState(x, y) { return { x, y, z: 0, vz: 0, stance: 0, slide: 0, sdx: 0, sdy: 0, slideCd: 0, pc: false, ps: false, pj: false, air: false }; }
+  function stepMove(s, mx, my, flags, dt, stats) {
+    const ads = !!(flags & 1), sprintIn = !!(flags & 2), crouch = !!(flags & 4), jump = !!(flags & 8), prone = !!(flags & 16);
+    let m = Math.hypot(mx, my);
+    if (m > 1) { mx /= m; my /= m; m = 1; }
+    const moving = m > 0.08;
+    const onGround = s.vz <= 0 && s.z <= groundAt(s.x, s.y, s.z) + 0.5;
+    s.slideCd = Math.max(0, s.slideCd - dt);
+    // sprint + crouch = slide
+    if (crouch && !s.pc && s.ps && onGround && moving && s.slideCd <= 0) { s.slide = SLIDE_T; s.sdx = mx / m; s.sdy = my / m; s.slideCd = SLIDE_CD; }
+    s.pc = crouch;
+    if (jump && !s.pj && onGround && !prone) { s.vz = JUMP_V; s.slide = 0; }
+    s.pj = jump;
+    const sprint = sprintIn && !crouch && !prone && !ads && moving && s.slide <= 0;
+    s.ps = sprint;
+    s.stance = s.slide > 0 ? 1 : prone ? 2 : crouch ? 1 : 0;
+    let vx = 0, vy = 0;
+    if (s.slide > 0) {
+      const k = s.slide / SLIDE_T, sp = BASE_SPEED * stats.speed * (0.8 + 1.4 * k);
+      vx = s.sdx * sp; vy = s.sdy * sp;
+      s.slide = Math.max(0, s.slide - dt);
+    } else if (moving) {
+      const sp = moveSpeed(stats, ads, sprint, s.stance);
+      vx = mx * sp; vy = my * sp;
+    }
+    if (vx || vy) { const r = moveCircle(s.x, s.y, vx * dt, vy * dt, PLAYER_R, s.z); s.x = r[0]; s.y = r[1]; }
+    const g = groundAt(s.x, s.y, s.z);
+    if (s.vz > 0 || s.z > g + 0.01) {
+      s.vz -= GRAVITY * dt; s.z += s.vz * dt;
+      if (s.z <= g) { s.z = g; s.vz = 0; }
+    } else { s.z = g; s.vz = 0; }
+    s.air = s.z > groundAt(s.x, s.y, s.z) + 0.5;
     return s;
   }
 
-  function eyeHeight(crouch) { return crouch ? EYE.crouch : EYE.stand; }
-  function bodyHeight(crouch) { return crouch ? BODY.crouch : BODY.stand; }
+  // Effective cone of fire for the current state.
+  function currentSpread(st, ads, moving, stance, sprint, air) {
+    stance = stanceOf(stance);
+    let s = st.spread * (ads ? st.adsMult : 1) * (moving ? st.moveMult : 1);
+    if (st.bipod && ads && (!moving || stance > 0)) s *= 0.35;
+    if (stance === 1) s *= 0.8;
+    if (stance === 2) s *= 0.6;
+    if (sprint && !ads && moving) s *= 1.5;
+    if (air) s = s * 2.5 + 0.02;
+    return s;
+  }
+
+  function eyeHeight(stance) { return EYE[stanceOf(stance)]; }
+  function bodyHeight(stance) { return BODY[stanceOf(stance)]; }
+  function headZone(stance) { return HEAD[stanceOf(stance)]; }
 
   // ---- objective positions (nudged out of any wall they land in)
   function freeSpot(x, y) { const r = resolveCircle(x, y, 40); return { x: Math.round(r[0]), y: Math.round(r[1]) }; }
@@ -477,7 +586,8 @@
     MAP_W, MAP_H, PLAYER_R, BASE_SPEED, MAX_HP, SCORE_LIMIT, MATCH_MS, MAX_ATTACHMENTS, MAX_SEC_ATTACHMENTS,
     HEAD_ZONE, HEADSHOT_MULT, WEAPONS, ATTACHMENTS, WALLS, SPAWNS, MAPS, MAP_IDS, MODES, MODE_IDS, HEIGHTS, useMap,
     computeStats, sanitizeLoadout, cleanAtts, resolveCircle, moveCircle, rayWalls, rayWorld, rayCylinder, rayCircle,
-    hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, clamp,
+    hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, headZone, clamp,
+    groundAt, stepMove, newMoveState, GRAVITY, JUMP_V,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Shared = api;

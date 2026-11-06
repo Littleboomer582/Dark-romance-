@@ -101,9 +101,11 @@ $('name').value = loadSaved('fl_name', '');
 let sens = loadSaved('fl_sens', 1);
 $('sens').value = sens; $('sensVal').textContent = (+sens).toFixed(2);
 $('sens').addEventListener('input', () => { sens = +$('sens').value; $('sensVal').textContent = sens.toFixed(2); save('fl_sens', sens); });
+$('adsMode').value = loadSaved('fl_adsMode', 'hold');
+$('adsMode').addEventListener('change', () => { adsMode = $('adsMode').value; adsLatched = false; save('fl_adsMode', adsMode); });
 $('controlsHelp').innerHTML = isTouch
-  ? 'Left thumb: move (push all the way up to sprint). Drag anywhere on the right to look. FIRE buttons shoot (drag on them to aim while firing). AIM aims down sights, &#8615; crouch, R reload, &#8646; swap, G grenade, &#9876; melee, RG rifle grenade.'
-  : 'Click to lock the mouse &middot; WASD move &middot; Mouse look &middot; Left click fire &middot; Right click aim down sights &middot; Shift sprint &middot; C / Ctrl crouch &middot; R reload &middot; Q / wheel swap &middot; G grenade &middot; V melee &middot; B rifle grenade &middot; Tab scores &middot; L loadout';
+  ? 'Left thumb: move (push all the way up to sprint). Drag on the right to look. FIRE buttons shoot (drag on them to aim). AIM aims down sights, JUMP jumps, &#8615; crouch (tap while sprinting to slide, hold to go prone), R reload, &#8646; swap, G grenade, &#9876; melee, RG rifle grenade.'
+  : 'Click to lock the mouse &middot; WASD move &middot; Mouse look &middot; Left click fire &middot; Right click aim down sights &middot; Shift sprint &middot; Space jump &middot; C crouch (while sprinting: slide, hold: prone) &middot; Z prone &middot; Ctrl hold crouch &middot; R reload &middot; Q / wheel swap &middot; G grenade &middot; V melee &middot; B rifle grenade &middot; Tab scores &middot; L loadout';
 
 // ================================================================== audio
 let actx = null, noiseBuf = null, soundsThisFrame = 0;
@@ -190,9 +192,9 @@ let ws = null, myId = 0, joined = false, roomCode = '';
 let snaps = [];
 const roster = new Map();
 let you = null;
-const pred = { x: 0, y: 0 };
+const pred = S.newMoveState(0, 0); // your predicted movement state (position, height, stance, slide)
 let pending = [], outbox = [], seq = 0, lastSend = 0, lastFireSent = false;
-let yaw = 0, pitch = 0, recoilDebt = 0, wasAlive = false, lastSlot = 0;
+let yaw = 0, pitch = 0, recoilDebt = 0, wasAlive = false, lastSlot = 0, sprintWas = false;
 let nadeState = [];
 const match = { sc: [0, 0], tl: 0, st: 'playing', rs: 0, winner: null };
 let ping = 0;
@@ -358,18 +360,17 @@ function onState(m) {
   you = m.you;
   if (you) {
     pending = pending.filter((i) => i[0] > you.seq);
-    let x = you.x, y = you.y;
+    const mv = you.mv || [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const ns = { x: you.x, y: you.y, z: mv[0], vz: mv[1], slide: mv[2], sdx: mv[3], sdy: mv[4], slideCd: mv[5], pc: !!mv[6], ps: !!mv[7], pj: !!mv[8], stance: pred.stance, air: false };
     if (you.alive) {
       const st = myStats();
-      for (const i of pending) {
-        const r = S.applyMove(x, y, i[2], i[3], i[1], S.moveSpeed(st, !!(i[4] & 1), !!(i[4] & 2), !!(i[4] & 4)));
-        x = r[0]; y = r[1];
-      }
+      for (const i of pending) S.stepMove(ns, i[2], i[3], i[4], i[1], st);
     }
-    if (!wasAlive && you.alive) { yaw = Math.atan2(S.MAP_H / 2 - y, S.MAP_W / 2 - x); pitch = 0; crouchOn = false; deathPos = null; }
+    const x = ns.x, y = ns.y;
+    if (!wasAlive && you.alive) { yaw = Math.atan2(S.MAP_H / 2 - y, S.MAP_W / 2 - x); pitch = 0; crouchOn = false; proneOn = false; adsLatched = false; deathPos = null; }
     if (wasAlive && !you.alive) deathPos = { x: pred.x, y: pred.y, yaw };
     wasAlive = you.alive;
-    pred.x = x; pred.y = y;
+    Object.assign(pred, ns);
     if (you.slot !== lastSlot) { vmSwap = 1; lastSlot = you.slot; }
   }
   for (const e of m.ev) handleEvent(e, now);
@@ -416,8 +417,9 @@ function handleEvent(e, now) {
         if (e.p === 0) {
           const st = myStats();
           let k = st.recoil * (0.8 + Math.random() * 0.4);
-          if (st.bipod && adsT > 0.5 && (!movingNow || crouchOn)) k *= 0.3;
-          if (crouchOn) k *= 0.8;
+          if (st.bipod && adsT > 0.5 && (!movingNow || pred.stance > 0)) k *= 0.3;
+          if (pred.stance === 1) k *= 0.8;
+          if (pred.stance === 2) k *= 0.6;
           pitch = Math.min(1.45, pitch + k);
           yaw += (Math.random() - 0.5) * k * 0.6;
           recoilDebt += k * 0.55;
@@ -633,6 +635,22 @@ function tex(name) {
       const r = rng(141); for (let i = 0; i < 30; i++) { g.fillStyle = 'rgba(20,12,6,.7)'; g.fillRect(r() * n, Math.floor(r() * 8) * 16 + 7, 2, 2); }
     }),
     coal: () => canvasTex(64, (g, n) => speckle(g, n, '#1c1b1a', ['rgba(60,60,62,.6)', 'rgba(10,10,10,.6)', 'rgba(90,90,95,.3)'], 600, 151, 4)),
+    lawn: () => canvasTex(256, (g, n) => speckle(g, n, '#58723a', ['rgba(70,100,45,.55)', 'rgba(110,140,70,.45)', 'rgba(45,70,30,.5)', 'rgba(140,130,80,.25)'], 4500, 161, 3), 40, 28),
+    asphalt: () => canvasTex(256, (g, n) => speckle(g, n, '#3d3c3a', ['rgba(70,68,64,.6)', 'rgba(30,30,30,.6)', 'rgba(90,88,84,.35)'], 3500, 171, 3)),
+    siding: () => canvasTex(128, (g, n) => {
+      g.fillStyle = '#d9d2bf'; g.fillRect(0, 0, n, n);
+      for (let y = 0; y < n; y += 10) { const gr = g.createLinearGradient(0, y, 0, y + 10); gr.addColorStop(0, '#ece6d4'); gr.addColorStop(0.85, '#cfc7b2'); gr.addColorStop(1, '#8f8876'); g.fillStyle = gr; g.fillRect(0, y, n, 10); }
+      const r = rng(181); for (let i = 0; i < 80; i++) { g.fillStyle = 'rgba(90,80,60,.18)'; g.fillRect(r() * n, r() * n, 6 + r() * 20, 2); }
+      g.fillStyle = 'rgba(70,60,45,.35)'; g.fillRect(0, n - 14, n, 14);
+    }),
+    storefront: () => canvasTex(256, (g, n) => {
+      g.fillStyle = '#8a4a32'; g.fillRect(0, 0, n, n);
+      const r = rng(191);
+      for (let row = 0; row < 32; row++) for (let col = 0; col < 8; col++) { const c = 115 + r() * 35; g.fillStyle = `rgb(${c},${c * 0.6},${c * 0.45})`; g.fillRect(col * 32 + (row % 2) * 16 + 1, row * 8 + 1, 30, 6); }
+      g.fillStyle = '#2f4a3a'; g.fillRect(0, 34, n, 36); // painted sign band
+      g.fillStyle = '#d8d0b8'; g.fillRect(0, 0, n, 6);
+    }),
+    hedge: () => canvasTex(128, (g, n) => speckle(g, n, '#2c4a22', ['rgba(60,100,40,.65)', 'rgba(20,35,15,.6)', 'rgba(90,130,55,.45)'], 2600, 201, 6)),
     bagSnow: () => canvasTex(64, (g, n) => { speckle(g, n, '#a8987a', ['rgba(120,100,60,.4)', 'rgba(240,244,248,.6)'], 300, 9, 2); g.fillStyle = 'rgba(240,244,248,.7)'; g.fillRect(0, 0, n, n * 0.35); }),
   };
   TEX[name] = T[name]();
@@ -646,6 +664,7 @@ const THEMES = {
   winter: { fog: 0xd3d9e1, near: 300, far: 2300, sky: 0xe8f0fa, gnd: 0x9aa2ad, hemi: 1.45, sun: 0xe6eeff, sunI: 1.3, ground: 'snow', perim: 'snowrock', craters: 10, craterCol: 0xaab2bd, wall: 'logs', snow: true, treeline: 'pine' },
   rail: { fog: 0xb8b2a6, near: 600, far: 3100, sky: 0xd0d2d2, gnd: 0x5a5244, hemi: 1.2, sun: 0xffe6c0, sunI: 1.9, ground: 'gravel', perim: 'brick', craters: 18, craterCol: 0x3a3630, wall: 'brick' },
   harbor: { fog: 0xa9b5bc, near: 500, far: 2900, sky: 0xc6d2da, gnd: 0x5c5e5c, hemi: 1.25, sun: 0xf2f0e8, sunI: 1.6, ground: 'dock', perim: 'brick', craters: 10, craterCol: 0x3e3c38, wall: 'brick' },
+  town: { fog: 0xc9d3d9, near: 700, far: 3300, sky: 0xdde8f0, gnd: 0x6a6a48, hemi: 1.35, sun: 0xfff1d6, sunI: 2.3, ground: 'lawn', perim: 'hedge', craters: 6, craterCol: 0x4a4430, wall: 'brick' },
   camp: { fog: 0xc8bf9f, near: 700, far: 3200, sky: 0xd9d8c8, gnd: 0x6a5a3a, hemi: 1.3, sun: 0xfff0cc, sunI: 2.1, ground: 'dirt', perim: 'palisade', craters: 12, craterCol: 0x4a3f2a, wall: 'planks' },
   island: { fog: 0xbcd6e2, near: 800, far: 3600, sky: 0xd6eefb, gnd: 0xa08f62, hemi: 1.3, sun: 0xfff2d6, sunI: 2.5, ground: 'sand', perim: 'jungle', craters: 22, craterCol: 0x8a7a52, wall: 'concrete', treeline: 'palm' },
 };
@@ -667,6 +686,11 @@ const M = {
   rail: new THREE.MeshStandardMaterial({ color: 0x5a5550, roughness: 0.4, metalness: 0.8 }),
   sleeper: new THREE.MeshLambertMaterial({ color: 0x3e2f22 }),
   tank: new THREE.MeshStandardMaterial({ color: 0x5b4a3a, roughness: 0.7, metalness: 0.3 }),
+  trim: new THREE.MeshLambertMaterial({ color: 0xefeadc }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x2a3a44, roughness: 0.08, metalness: 0.4, transparent: true, opacity: 0.35 }),
+  tire: new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 }),
+  chrome: new THREE.MeshStandardMaterial({ color: 0xc8c8c8, roughness: 0.2, metalness: 1 }),
+  flower: new THREE.MeshLambertMaterial({ color: 0xc0405a }),
 };
 function wallMat(name, w, h) { const t = tex(name).clone(); t.needsUpdate = true; t.repeat.set(w, h); return new THREE.MeshLambertMaterial({ map: t }); }
 
@@ -816,8 +840,53 @@ function buildWorld(mapId) {
       }
       continue;
     }
+    if (w.k === 'window') { // sill + lintel + frame: shoot or jump through
+      const horiz = w.w >= w.h, len = horiz ? w.w : w.h, dep = horiz ? w.h : w.w;
+      const wallTex = map.theme === 'town' ? (cx < S.MAP_W / 2 ? 'siding' : 'storefront') : 'plaster';
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(w.w, w.ht, w.h), wallMat(wallTex, len / 140, w.ht / 170)); sill.position.set(cx, w.ht / 2, cz); sill.castShadow = sill.receiveShadow = true; g.add(sill);
+      const top = 170 - 112;
+      const lintel = new THREE.Mesh(new THREE.BoxGeometry(w.w, top, w.h), wallMat(wallTex, len / 140, top / 170)); lintel.position.set(cx, 112 + top / 2, cz); lintel.castShadow = true; g.add(lintel);
+      const fr = (a, b, c, x, y, z) => { const m2 = new THREE.Mesh(new THREE.BoxGeometry(a, b, c), M.trim); m2.position.set(x, y, z); g.add(m2); };
+      fr(horiz ? len + 6 : dep + 4, 4, horiz ? dep + 4 : len + 6, cx, w.ht + 2, cz);
+      fr(horiz ? len + 6 : dep + 4, 4, horiz ? dep + 4 : len + 6, cx, 112, cz);
+      for (const sd of [-1, 1]) fr(horiz ? 4 : dep + 4, 74, horiz ? dep + 4 : 4, cx + (horiz ? sd * len / 2 : 0), 75, cz + (horiz ? 0 : sd * len / 2));
+      continue;
+    }
+    if (w.k === 'hedge') {
+      const hd = new THREE.Mesh(new THREE.BoxGeometry(w.w + 6, w.ht, w.h + 6), new THREE.MeshLambertMaterial({ map: tex('hedge') })); hd.position.set(cx, w.ht / 2, cz); hd.castShadow = hd.receiveShadow = true; g.add(hd);
+      continue;
+    }
+    if (w.k === 'planter') {
+      const pl = new THREE.Mesh(new THREE.BoxGeometry(w.w, w.ht, w.h), wallMat('brick', Math.max(w.w, w.h) / 60, 0.6)); pl.position.set(cx, w.ht / 2, cz); pl.castShadow = pl.receiveShadow = true; g.add(pl);
+      const soil = new THREE.Mesh(new THREE.BoxGeometry(w.w - 8, 4, w.h - 8), new THREE.MeshLambertMaterial({ color: 0x3a2a1a })); soil.position.set(cx, w.ht, cz); g.add(soil);
+      const n = Math.floor(Math.max(w.w, w.h) / 22);
+      for (let i = 0; i < n; i++) { const fl = new THREE.Mesh(new THREE.SphereGeometry(5, 6, 5), i % 3 ? M.frond : M.flower); const t = (i + 0.5) / n; fl.position.set(w.w > w.h ? w.x + t * w.w : cx, w.ht + 5, w.w > w.h ? cz : w.y + t * w.h); g.add(fl); }
+      continue;
+    }
+    if (w.k === 'car' || w.k === 'truck') {
+      const horiz = w.w >= w.h, len = horiz ? w.w : w.h, wid = horiz ? w.h : w.w;
+      const grp = new THREE.Group(); grp.position.set(cx, 0, cz); if (!horiz) grp.rotation.y = Math.PI / 2;
+      const r2 = rng(Math.floor(cx + cz * 3));
+      const paint = new THREE.MeshStandardMaterial({ color: w.k === 'truck' ? 0x3f5a3a : [0x2b3a5a, 0x6a2a24, 0x2f4a3a, 0x1e1e20][Math.floor(r2() * 4)], roughness: 0.35, metalness: 0.5 });
+      const add = (geo, mat, x, y, z) => { const m2 = new THREE.Mesh(geo, mat); m2.position.set(x, y, z); m2.castShadow = true; grp.add(m2); return m2; };
+      if (w.k === 'car') {
+        add(new THREE.BoxGeometry(len, 22, wid), paint, 0, 20, 0);
+        add(new THREE.BoxGeometry(len * 0.5, 20, wid - 6), paint, -len * 0.08, 41, 0);
+        add(new THREE.BoxGeometry(len * 0.46, 15, wid - 4), M.glass, -len * 0.08, 41, 0);
+        add(new THREE.BoxGeometry(6, 8, wid - 10), M.chrome, len / 2, 20, 0);
+      } else {
+        add(new THREE.BoxGeometry(len * 0.66, w.ht - 14, wid), new THREE.MeshLambertMaterial({ color: 0x7a6a4a }), -len * 0.17, (w.ht - 14) / 2 + 14, 0); // cargo box
+        add(new THREE.BoxGeometry(len * 0.32, 48, wid - 4), paint, len * 0.34, 38, 0); // cab
+        add(new THREE.BoxGeometry(4, 16, wid - 12), M.glass, len * 0.5, 50, 0);
+      }
+      for (const a of [-0.32, 0.32]) for (const sd of [-1, 1]) { const tire = add(new THREE.CylinderGeometry(10, 10, 6, 14), M.tire, a * len, 10, sd * (wid / 2 - 2)); tire.rotation.x = Math.PI / 2; }
+      g.add(grp);
+      continue;
+    }
     let mat;
-    if (w.k === 'shed' || w.k === 'warehouse') mat = wallMat('corrugated', Math.max(w.w, w.h) / 60, w.ht / 100);
+    if (w.k === 'house' && map.theme === 'town') mat = wallMat('siding', Math.max(w.w, w.h) / 140, w.ht / 170);
+    else if (w.k === 'store') mat = wallMat('storefront', Math.max(w.w, w.h) / 300, 1);
+    else if (w.k === 'shed' || w.k === 'warehouse') mat = wallMat('corrugated', Math.max(w.w, w.h) / 60, w.ht / 100);
     else if (w.k === 'palisade') mat = wallMat('palisade', Math.max(w.w, w.h) / 64, 1);
     else if (w.k === 'hut') mat = wallMat('planks', Math.max(w.w, w.h) / 100, w.ht / 100);
     else if (w.k === 'crate') mat = wallMat('wood', Math.max(1, Math.round(Math.max(w.w, w.h) / 50)), Math.max(1, Math.round(w.ht / 50)));
@@ -834,7 +903,7 @@ function buildWorld(mapId) {
       g.add(tips);
     }
     if (w.k === 'shed' || w.k === 'warehouse' || w.k === 'hut') { const cap = new THREE.Mesh(new THREE.BoxGeometry(w.w + 4, 6, w.h + 4), w.k === 'hut' ? wallMat('planks', 1, 0.1) : M.steel); cap.position.set(cx, w.ht + 3, cz); cap.castShadow = true; g.add(cap); }
-    if (w.k === 'wall' || w.k === 'house' || w.k === 'bunker') {
+    if (w.k === 'wall' || w.k === 'house' || w.k === 'bunker' || w.k === 'store') {
       const capMat = map.theme === 'winter' ? M.pineSnow : wallMat(w.k === 'house' ? 'wood' : 'concrete', 2, 0.2);
       const cap = new THREE.Mesh(new THREE.BoxGeometry(w.w + 4, w.k === 'bunker' ? 10 : 6, w.h + 4), capMat);
       cap.position.set(cx, w.ht + (w.k === 'bunker' ? 5 : 3), cz); cap.castShadow = true; g.add(cap);
@@ -863,6 +932,23 @@ function buildWorld(mapId) {
       for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) { const rl = new THREE.Mesh(new THREE.BoxGeometry(dx ? 4 : 96, 30, dz ? 4 : 96), wallMat('planks', 1, 0.3)); rl.position.set(pr.x + dx * 46, 219, pr.y + dz * 46); g.add(rl); }
       const roof = new THREE.Mesh(new THREE.ConeGeometry(80, 40, 4), wallMat('planks', 1, 1)); roof.rotation.y = Math.PI / 4; roof.position.set(pr.x, 290, pr.y); roof.castShadow = true; g.add(roof);
       for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const pl = new THREE.Mesh(new THREE.BoxGeometry(6, 60, 6), wallMat('logs', 1, 1)); pl.position.set(pr.x + dx * 42, 260, pr.y + dz * 42); g.add(pl); }
+    } else if (pr.type === 'street') {
+      const st2 = new THREE.Mesh(new THREE.PlaneGeometry(pr.x1 - pr.x0, 900), new THREE.MeshLambertMaterial({ map: tex('asphalt') }));
+      st2.rotation.x = -Math.PI / 2; st2.position.set((pr.x0 + pr.x1) / 2, 0.4, 800); st2.receiveShadow = true; g.add(st2);
+      for (const x of [pr.x0, pr.x1]) { const curb = new THREE.Mesh(new THREE.BoxGeometry(18, 4, 900), wallMat('concrete', 0.2, 6)); curb.position.set(x, 2, 800); curb.receiveShadow = true; g.add(curb); }
+      for (let y = 380; y < 1240; y += 60) { const ln = new THREE.Mesh(new THREE.PlaneGeometry(4, 30), new THREE.MeshBasicMaterial({ color: 0xe8d890 })); ln.rotation.x = -Math.PI / 2; ln.position.set((pr.x0 + pr.x1) / 2, 0.6, y); g.add(ln); }
+      for (const [x, y] of [[pr.x0 - 30, 420], [pr.x1 + 30, 1180], [pr.x0 - 30, 1180], [pr.x1 + 30, 420]]) { // street lamps
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(2, 3, 180, 8), M.steel); pole.position.set(x, 90, y); g.add(pole);
+        const lamp = new THREE.Mesh(new THREE.SphereGeometry(8, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff2c0 })); lamp.position.set(x, 182, y); g.add(lamp);
+      }
+      // store awning on the store's street-facing side
+      const aw = new THREE.Mesh(new THREE.BoxGeometry(14, 4, 300), new THREE.MeshLambertMaterial({ color: 0xa83a32 })); aw.position.set(S.MAP_W - 600 - 300 - 10, 120, 690); aw.rotation.z = 0.35; g.add(aw);
+      const sc = document.createElement('canvas'); sc.width = 512; sc.height = 96;
+      const sg = sc.getContext('2d'); sg.fillStyle = '#2f4a3a'; sg.fillRect(0, 0, 512, 96); sg.strokeStyle = '#d8c890'; sg.lineWidth = 6; sg.strokeRect(6, 6, 500, 84);
+      sg.fillStyle = '#efe2b8'; sg.font = 'bold 54px serif'; sg.textAlign = 'center'; sg.textBaseline = 'middle'; sg.fillText('GENERAL STORE', 256, 50);
+      const stex = new THREE.CanvasTexture(sc); stex.colorSpace = THREE.SRGBColorSpace;
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(200, 38), new THREE.MeshLambertMaterial({ map: stex }));
+      sign.rotation.y = -Math.PI / 2; sign.position.set(S.MAP_W - 600 - 300 - 4, 148, 690); g.add(sign);
     } else if (pr.type === 'bridge') {
       const deck = new THREE.Mesh(new THREE.BoxGeometry(pr.w + 40, 6, pr.h), wallMat('planks', 1, 1)); deck.position.set(pr.x + pr.w / 2, 3, pr.y + pr.h / 2); deck.receiveShadow = true; g.add(deck);
       for (const sd of [0, 1]) { const rl = new THREE.Mesh(new THREE.BoxGeometry(pr.w + 40, 4, 4), M.steel); rl.position.set(pr.x + pr.w / 2, 30, pr.y + sd * pr.h); g.add(rl); for (const px of [0, 0.5, 1]) { const po = new THREE.Mesh(new THREE.BoxGeometry(4, 30, 4), M.steel); po.position.set(pr.x - 20 + px * (pr.w + 40), 15, pr.y + sd * pr.h); g.add(po); } }
@@ -1031,6 +1117,8 @@ function makeFlash(size) {
 // ============================================================ viewmodel
 let vm = null;
 let adsT = 0, vmSwap = 0, vmFlash = 0, vmMelee = 0, bobPhase = 0, movingNow = false, crouchOn = false, crouchT = 0;
+let proneOn = false, jumpHeld = false, eyeSmooth = 60, landDip = 0, wasAir = false, slideTilt = 0, crouchDownAt = 0;
+const myEye = () => pred.z + S.eyeHeight(pred.stance);
 let lastStateAt = 0, reloadP = 0;
 const rec = { z: 0, rx: 0, ry: 0, rz: 0, vz: 0, vrx: 0, vry: 0, vrz: 0 };
 const sway = { x: 0, y: 0, lastYaw: 0, lastPitch: 0 };
@@ -1108,7 +1196,7 @@ function vmMuzzleWorld() {
     p.x *= k; p.y *= k;
     return camera.localToWorld(p.clone());
   }
-  const eyeH = S.eyeHeight(crouchOn);
+  const eyeH = myEye();
   const f = new THREE.Vector3(Math.cos(yaw) * Math.cos(pitch), Math.sin(pitch), Math.sin(yaw) * Math.cos(pitch));
   return new THREE.Vector3(pred.x, eyeH - 2, pred.y).addScaledVector(f, 30);
 }
@@ -1343,9 +1431,19 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyG') send({ t: 'nade' });
   if (e.code === 'KeyV' || e.code === 'KeyF') send({ t: 'melee' });
   if (e.code === 'KeyB') send({ t: 'rg' });
-  if (e.code === 'KeyC') crouchOn = !crouchOn;
+  if (e.code === 'KeyC') { crouchDownAt = performance.now(); if (proneOn) { proneOn = false; crouchOn = true; } else crouchOn = !crouchOn; }
+  if (e.code === 'KeyZ') { proneOn = !proneOn; if (proneOn) crouchOn = false; }
+  if (e.code === 'Space') { e.preventDefault(); pressJump(); }
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { crouchOn = false; proneOn = false; }
 });
-addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'Tab') toggleScores(false); });
+addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'Tab') toggleScores(false); if (e.code === 'KeyC') crouchDownAt = 0; if (e.code === 'Space') jumpHeld = false; });
+// Jump: from prone you rise to a crouch, from a crouch you stand, standing you jump.
+function pressJump() {
+  if (proneOn) { proneOn = false; crouchOn = true; return; }
+  if (crouchOn) { crouchOn = false; return; }
+  jumpHeld = true;
+  setTimeout(() => { if (!keys.Space) jumpHeld = false; }, 120);
+}
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = mouseRight = false; fireBtns.clear(); });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('wheel', () => { if (inGame() && locked) send({ t: 'swap' }); }, { passive: true });
@@ -1353,14 +1451,36 @@ canvas.addEventListener('wheel', () => { if (inGame() && locked) send({ t: 'swap
 canvas.addEventListener('pointerdown', (e) => {
   initAudio();
   if (e.pointerType === 'mouse') {
-    if (!locked) { if (joined && inGame()) requestLock(); return; }
-    if (e.button === 0) mouseDown = true;
-    if (e.button === 2) mouseRight = true;
-    return;
+    if (!locked && joined && inGame()) requestLock();
+    return; // buttons are tracked with mousedown/mouseup below
   }
   e.preventDefault();
   if (e.clientX < innerWidth * 0.4 && !moveStick) moveStick = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY };
   else lookPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+});
+// Mouse buttons: pointer events only report the FIRST button pressed (holding aim and then clicking
+// fire produced no event), so use mousedown/mouseup, which fire for every button. Buttons are also
+// released when the window loses focus or the mouse lock ends, so none can get stuck.
+let adsMode = loadSaved('fl_adsMode', 'hold'), adsLatched = false;
+// Send the trigger pull to the server immediately instead of waiting for the next frame.
+function pullTrigger() {
+  if (!you || !you.alive) return;
+  send({ t: 'in', l: [], a: +yaw.toFixed(4), p: +pitch.toFixed(4), f: true, pull: 1 });
+  lastFireSent = true;
+}
+function releaseTrigger() {
+  if (!lastFireSent || mouseDown || fireBtns.size) return;
+  send({ t: 'in', l: [], a: +yaw.toFixed(4), p: +pitch.toFixed(4), f: false });
+  lastFireSent = false;
+}
+document.addEventListener('mousedown', (e) => {
+  if (!locked || !inGame()) return;
+  if (e.button === 0) { mouseDown = true; pullTrigger(); }
+  if (e.button === 2) { mouseRight = true; if (adsMode === 'toggle') adsLatched = !adsLatched; }
+});
+document.addEventListener('mouseup', (e) => {
+  if (e.button === 0) { mouseDown = false; releaseTrigger(); }
+  if (e.button === 2) mouseRight = false;
 });
 addEventListener('mousemove', (e) => {
   if (!locked || !inGame()) return;
@@ -1380,10 +1500,10 @@ addEventListener('pointermove', (e) => {
   }
 });
 function endPointer(e) {
-  if (e.pointerType === 'mouse') { if (e.button === 0) mouseDown = false; if (e.button === 2) mouseRight = false; return; }
+  if (e.pointerType === 'mouse') return;
   if (moveStick && moveStick.id === e.pointerId) moveStick = null;
   lookPointers.delete(e.pointerId);
-  if (fireBtns.has(e.pointerId)) { fireBtns.delete(e.pointerId); if (!fireBtns.size) { $('tFire').classList.remove('on'); $('tFire2').classList.remove('on'); } }
+  if (fireBtns.has(e.pointerId)) { fireBtns.delete(e.pointerId); if (!fireBtns.size) { $('tFire').classList.remove('on'); $('tFire2').classList.remove('on'); releaseTrigger(); } }
 }
 addEventListener('pointerup', endPointer);
 addEventListener('pointercancel', endPointer);
@@ -1399,9 +1519,14 @@ function stickVec(s) {
 function bindBtn(id, down) {
   $(id).addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); initAudio(); down($(id), e); });
 }
-for (const id of ['tFire', 'tFire2']) bindBtn(id, (b, e) => { fireBtns.add(e.pointerId); lookPointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); b.classList.add('on'); });
+for (const id of ['tFire', 'tFire2']) bindBtn(id, (b, e) => { fireBtns.add(e.pointerId); lookPointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); b.classList.add('on'); pullTrigger(); });
 bindBtn('tAds', (b) => { adsToggle = !adsToggle; b.classList.toggle('on', adsToggle); });
-bindBtn('tCrouch', () => { crouchOn = !crouchOn; });
+bindBtn('tCrouch', () => {
+  crouchDownAt = performance.now();
+  if (proneOn) { proneOn = false; crouchOn = true; } else crouchOn = !crouchOn;
+});
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) $('tCrouch').addEventListener(ev, () => { crouchDownAt = 0; });
+bindBtn('tJump', () => pressJump());
 bindBtn('tReload', () => send({ t: 'reload' }));
 bindBtn('tSwap', () => send({ t: 'swap' }));
 bindBtn('tNade', () => send({ t: 'nade' }));
@@ -1625,7 +1750,7 @@ function interpPlayers(now) {
     const pa = a.p.get(id);
     if (!pa || ((pa.f & 2) !== (pb.f & 2)) || Math.hypot(pa.x - pb.x, pa.y - pb.y) > 150) { out.set(id, pb); continue; }
     const da = Math.atan2(Math.sin(pb.a - pa.a), Math.cos(pb.a - pa.a));
-    out.set(id, { ...pb, x: pa.x + (pb.x - pa.x) * k, y: pa.y + (pb.y - pa.y) * k, a: pa.a + da * k, q: pa.q + (pb.q - pa.q) * k });
+    out.set(id, { ...pb, x: pa.x + (pb.x - pa.x) * k, y: pa.y + (pb.y - pa.y) * k, z: (pa.z || 0) + ((pb.z || 0) - (pa.z || 0)) * k, a: pa.a + da * k, q: pa.q + (pb.q - pa.q) * k });
   }
   return out;
 }
@@ -1635,11 +1760,11 @@ let assistTarget = null;
 function findAssist(players) {
   assistTarget = null;
   if (!isTouch || !you || !you.alive) return;
-  const eye = S.eyeHeight(crouchOn);
+  const eye = myEye();
   let best = 0.09 + adsT * 0.06;
   for (const [id, p] of players) {
     if (id === myId || !(p.f & 2) || (p.f & 1 ? 'axis' : 'allies') === you.team) continue;
-    const ch = S.bodyHeight(!!(p.f & 64)) * 0.72;
+    const ch = (p.z || 0) + S.bodyHeight(p.f & 256 ? 2 : p.f & 64 ? 1 : 0) * 0.72;
     const dx = p.x - pred.x, dy = p.y - pred.y, d = Math.hypot(dx, dy);
     if (d > 1300 || d < 1) continue;
     const ty = Math.atan2(dy, dx), tp = Math.atan2(ch - eye, d);
@@ -1685,23 +1810,27 @@ function frame(now) {
     } else {
       fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
       strafe = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
-      ads = mouseRight;
+      ads = adsMode === 'toggle' ? adsLatched : mouseRight;
       sprint = !!(keys.ShiftLeft || keys.ShiftRight) && fwd > 0;
       fire = mouseDown && locked;
-      if (keys.ControlLeft || keys.ControlRight) crouchOn = true;
     }
-    if (sprint) { crouchOn = false; ads = false; }
+    // hold crouch to go prone
+    if (crouchDownAt && performance.now() - crouchDownAt > 420 && !pred.slide) { proneOn = true; crouchOn = false; crouchDownAt = 0; }
+    if (isTouch && sprint && !sprintWas && (crouchOn || proneOn) && !pred.slide) { crouchOn = false; proneOn = false; }
+    sprintWas = sprint;
+    if (crouchOn || proneOn) sprint = false;
+    if (sprint) { ads = false; adsLatched = false; }
+    const holdCrouch = !isTouch && (keys.ControlLeft || keys.ControlRight);
     mx = fwd * Math.cos(yaw) - strafe * Math.sin(yaw);
     my = fwd * Math.sin(yaw) + strafe * Math.cos(yaw);
     movingNow = Math.hypot(mx, my) > 0.1;
     // recoil recovery
     if (recoilDebt > 0) { const r = Math.min(recoilDebt, recoilDebt * 7 * dt + 0.0005); pitch -= r; recoilDebt -= r; }
-    if (alive) {
-      const r = S.applyMove(pred.x, pred.y, mx, my, dt, S.moveSpeed(st, ads, sprint, crouchOn));
-      pred.x = r[0]; pred.y = r[1];
-    }
+    const flags = (ads ? 1 : 0) | (sprint ? 2 : 0) | (crouchOn || holdCrouch ? 4 : 0) | (jumpHeld ? 8 : 0) | (proneOn ? 16 : 0);
+    const r3 = (v) => Math.round(v * 1000) / 1000;
+    const item = [seq + 1, r3(dt), r3(mx), r3(my), flags];
+    if (alive) S.stepMove(pred, item[2], item[3], flags, item[1], st);
     seq++;
-    const item = [seq, +dt.toFixed(4), +mx.toFixed(3), +my.toFixed(3), (ads ? 1 : 0) | (sprint ? 2 : 0) | (crouchOn ? 4 : 0)];
     pending.push(item); outbox.push(item);
     if (pending.length > 240) pending.shift();
     if (now - lastSend > 33 || fire !== lastFireSent) {
@@ -1712,22 +1841,29 @@ function frame(now) {
 
   // --- camera
   adsT += ((ads && alive ? 1 : 0) - adsT) * Math.min(1, dt * st.adsSpeed);
-  crouchT += ((crouchOn ? 1 : 0) - crouchT) * Math.min(1, dt * 10);
+  crouchT += ((pred.stance > 0 ? 1 : 0) - crouchT) * Math.min(1, dt * 10);
+  eyeSmooth += (S.eyeHeight(pred.stance) - eyeSmooth) * Math.min(1, dt * (pred.slide > 0 ? 16 : 9));
+  if (wasAir && !pred.air && you && you.alive) landDip = Math.min(9, landDip + 6);
+  wasAir = pred.air;
+  landDip *= Math.pow(0.004, dt);
+  slideTilt += ((pred.slide > 0 ? 1 : 0) - slideTilt) * Math.min(1, dt * 10);
   const scoped = st.zoom > 1 && adsT > 0.85;
   const baseFov = isTouch ? 70 : 75;
-  const fov = st.zoom > 1 ? baseFov + (baseFov / st.zoom - baseFov) * Math.max(0, (adsT - 0.6) / 0.4) : baseFov - 20 * adsT;
+  const fov = (st.zoom > 1 ? baseFov + (baseFov / st.zoom - baseFov) * Math.max(0, (adsT - 0.6) / 0.4) : baseFov - 20 * adsT) + 7 * slideTilt * (1 - adsT);
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
   shake *= Math.pow(0.02, dt);
   if (you && you.alive) {
-    const eye = 60 - 20 * crouchT;
-    if (movingNow && alive) bobPhase += dt * (sprint ? 14 : 9) * (crouchOn ? 0.7 : 1);
-    const bob = movingNow ? Math.sin(bobPhase * 2) * (sprint ? 1.6 : 0.8) * (1 - adsT * 0.8) : 0;
+    const eye = pred.z + eyeSmooth - landDip;
+    const grounded = !pred.air && pred.slide <= 0;
+    if (movingNow && alive && grounded) bobPhase += dt * (sprint ? 14 : 9) * (pred.stance === 2 ? 0.45 : pred.stance === 1 ? 0.7 : 1);
+    const bob = movingNow && grounded ? Math.sin(bobPhase * 2) * (sprint ? 1.6 : pred.stance === 2 ? 1.2 : 0.8) * (1 - adsT * 0.8) : 0;
     camera.position.set(pred.x, eye + bob, pred.y);
     let lp = pitch, ly = yaw;
     if (scoped) { lp += Math.sin(now / 900) * 0.002; ly += Math.cos(now / 1300) * 0.002; }
     lp += (Math.random() - 0.5) * shake * 0.004; ly += (Math.random() - 0.5) * shake * 0.004;
     tmpV.set(pred.x + Math.cos(ly) * Math.cos(lp) * 100, eye + bob + Math.sin(lp) * 100, pred.y + Math.sin(ly) * Math.cos(lp) * 100);
     camera.lookAt(tmpV);
+    if (slideTilt > 0.01) camera.rotateZ(-0.09 * slideTilt); // lean into the slide
   } else if (deathPos) {
     // death cam: look from above at where you fell, towards your killer
     const kx = you && you.kx ? you.kx : null;
@@ -1758,19 +1894,26 @@ function frame(now) {
       continue;
     }
     if (s.deadAt) { s.deadAt = 0; s.root.rotation.z = 0; s.root.position.y = 0; s.lastX = p.x; s.lastY = p.y; }
+    if (s.root.rotation.z > 1.2 && !(p.f & 256)) s.root.rotation.z = 0;
     s.root.visible = true;
     const sp = Math.hypot(p.x - s.lastX, p.y - s.lastY) / Math.max(dt, 0.001);
     s.lastX = p.x; s.lastY = p.y;
-    s.root.position.x = p.x; s.root.position.z = p.y;
+    const prone = !!(p.f & 256), sliding = !!(p.f & 512), crouch = !!(p.f & 64) && !prone;
+    const stance = prone ? 2 : crouch ? 1 : 0;
+    s.root.position.x = p.x; s.root.position.z = p.y; s.root.position.y = p.z || 0;
     s.root.rotation.y = -p.a;
-    const crouch = !!(p.f & 64);
+    // prone: lie flat facing forward; slide: lean back
+    const lie = prone ? -1.45 : sliding ? 0.75 : 0;
+    s.root.rotation.z += (lie - s.root.rotation.z) * Math.min(1, dt * 12);
+    if (prone) { s.root.position.x -= Math.cos(p.a) * 30; s.root.position.z -= Math.sin(p.a) * 30; }
     if (sp > 20) s.walk += dt * Math.min(sp, 320) / 22;
     const swing = sp > 20 ? Math.sin(s.walk) * (p.f & 128 ? 0.8 : 0.5) : 0;
     s.legL.rotation.z = swing; s.legR.rotation.z = -swing;
-    const cy = crouch ? 0.55 : 1;
+    const cy = crouch || sliding ? 0.55 : 1;
     s.legL.scale.y = s.legR.scale.y = cy;
-    s.upper.position.y = crouch ? -16 : 0;
-    s.holder.rotation.z = p.q || 0;
+    s.upper.position.y = crouch || sliding ? -16 : 0;
+    s.holder.rotation.z = (p.q || 0) - s.root.rotation.z; // keep the gun pointed where they aim
+    if (p.f & 1024) { s.legL.rotation.z = 0.5; s.legR.rotation.z = -0.3; } // tuck legs mid-jump
     if (p.f & 128) s.holder.rotation.x = 0.5; else s.holder.rotation.x = 0;
     // name tags: teammates always, enemies when aimed at
     const r = roster.get(id);
@@ -1783,14 +1926,15 @@ function frame(now) {
     }
     let showTag = friendly;
     if (!friendly && you && you.alive) {
-      const eye = S.eyeHeight(crouchOn);
+      const eye = myEye();
       const cp = Math.cos(pitch);
       const dx = Math.cos(yaw) * cp, dy = Math.sin(yaw) * cp, dh = Math.sin(pitch);
-      const t = S.rayCylinder(pred.x, pred.y, eye, dx, dy, dh, p.x, p.y, S.PLAYER_R + 4, S.bodyHeight(crouch));
+      const t = S.rayCylinder(pred.x, pred.y, eye - (p.z || 0), dx, dy, dh, p.x, p.y, S.PLAYER_R + 4, S.bodyHeight(stance));
       showTag = t < 1500 && S.rayWorld(pred.x, pred.y, eye, dx, dy, dh, t) >= t - 1;
     }
     s.tag.visible = showTag;
-    s.tag.position.y = crouch ? 66 : 86;
+    s.tag.position.y = prone ? 40 : crouch ? 66 : 86;
+    if (prone) s.tag.position.set(30, 40, 0); else s.tag.position.x = 0;
   }
   for (const id of [...soldiers.keys()]) if (!seen.has(id)) removeSoldier(id);
   for (const s of soldiers.values()) s.flash.visible = now - (s.flash.userData.t || 0) < 50 && !s.deadAt;
@@ -1873,6 +2017,8 @@ function frame(now) {
     target.x += Math.sin(bobPhase) * 0.6 * bobA;
     target.y += Math.abs(Math.cos(bobPhase)) * 0.5 * bobA - crouchT * 0.3 + Math.sin(now / 700) * 0.12 * (1 - adsT);
     target.y -= vmSwap * 14;
+    if (pred.stance === 2) { target.y -= 1.0; if (movingNow) { target.x += Math.sin(bobPhase) * 1.6; target.y -= Math.abs(Math.sin(bobPhase)) * 1.2; } }
+    target.y -= landDip * 0.15;
     // sway against your look direction
     let dyaw = yaw - sway.lastYaw; dyaw = Math.atan2(Math.sin(dyaw), Math.cos(dyaw));
     const dp = pitch - sway.lastPitch;
@@ -1881,7 +2027,8 @@ function frame(now) {
     sway.x += (S.clamp(-dyaw * 3, -0.12, 0.12) * sk - sway.x) * Math.min(1, dt * 9);
     sway.y += (S.clamp(dp * 3, -0.1, 0.1) * sk - sway.y) * Math.min(1, dt * 9);
     target.x += sway.x * 5; target.y += sway.y * 4;
-    let rx = 0, ry = 0, rz = 0;
+    let rx = 0, ry = 0, rz = -0.28 * slideTilt;
+    if (pred.stance === 2 && movingNow && reloadP <= 0) rz += Math.sin(bobPhase) * 0.12;
     if (sprint && movingNow) { target.x -= 2; target.y -= 2.5; ry = 0.75; rz = 0.3; rx -= 0.25; }
     if (reloadP > 0) {
       const dip = Math.sin(Math.min(1, reloadP) * Math.PI);
@@ -1959,7 +2106,7 @@ function drawOverlay(now, players, st, scoped, ads, moving, sprint) {
   }
   // crosshair
   if (you.alive && inGame() && !scoped) {
-    const spread = S.currentSpread(st, ads, moving, crouchOn, sprint);
+    const spread = S.currentSpread(st, ads, moving, pred.stance, sprint, pred.air);
     const gap = Math.max(4, Math.tan(spread) / Math.tan(camera.fov * Math.PI / 360) * H / 2);
     const a = Math.max(0, 1 - adsT * 1.6);
     if (a > 0 && !sprint) {
@@ -2070,10 +2217,10 @@ function updateHud(now) {
   }
   setText('ammoMag', String(you.ammo)); setText('ammoRes', String(you.res));
   setText('nades', 'Frag x' + you.nd + (you.rg ? ' · Rifle Gren x' + you.rg : '') + (you.rl > 0 ? ' · RELOADING' : you.ammo === 0 ? ' · RELOAD!' : ''));
-  setText('stance', crouchOn ? 'CROUCHED' : '');
+  setText('stance', pred.slide > 0 ? 'SLIDING' : pred.stance === 2 ? 'PRONE' : pred.stance === 1 ? 'CROUCHED' : pred.air ? 'AIRBORNE' : '');
   setText('ping', offlineMode ? 'OFFLINE' : Math.round(ping) + ' ms · ' + roomCode);
   if (isTouch) $('tRg').classList.toggle('hidden', !(you.rg > 0 && you.slot === 0));
-  if (isTouch) $('tCrouch').classList.toggle('on', crouchOn);
+  if (isTouch) { $('tCrouch').classList.toggle('on', crouchOn || proneOn); $('tCrouch').textContent = proneOn ? '⤓' : '↧'; }
   const kf = killfeed.filter((k) => now - k.t < 6000).map((k) => k.notice ? `<div class="notice ${k.good === true ? 'good' : k.good === false ? 'bad' : ''}">${esc(k.notice)}</div>` : `<div><span class="c-${teamOf(k.k)}">${esc(nameOf(k.k))}</span> <span class="w">[${esc(k.w)}${k.hs ? ' · HS' : ''}]</span> <span class="c-${teamOf(k.v)}">${esc(nameOf(k.v))}</span></div>`).join('');
   if (hudCache.kf !== kf) { hudCache.kf = kf; $('killfeed').innerHTML = kf; }
   let c = '';
