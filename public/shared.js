@@ -75,6 +75,95 @@
     nambu: W({ name: 'Nambu', cls: 'Pistol', nation: 'Japan', dmg: 28, rate: 130, mag: 8, reserve: 48, reload: 1600, spread: 0.045, range: 380, speed: 1.06, auto: false, secondary: true, allowed: ['extmag', 'suppressor', 'aperture', 'dualmag'] }),
     revolver: W({ name: '.357 Revolver', cls: 'Pistol', nation: 'USA', dmg: 55, rate: 320, mag: 6, reserve: 36, reload: 2400, spread: 0.035, range: 450, speed: 1.03, auto: false, secondary: true, allowed: ['aperture', 'dualmag'] }),
   };
+  // ---- Cold War and modern weapons (real firearms)
+  const AR_A = ['reddot', 'holo', 'acog', 'suppressor', 'flashhider', 'grip', 'gl', 'extmag', 'dualmag', 'fmj', 'rapidfire', 'laser', 'sling'];
+  const SMG_A = ['reddot', 'holo', 'suppressor', 'flashhider', 'grip', 'extmag', 'dualmag', 'rapidfire', 'fmj', 'laser', 'sling'];
+  const LMG_A = ['reddot', 'holo', 'acog', 'grip', 'bipod', 'extmag', 'fmj', 'rapidfire', 'flashhider', 'sling'];
+  const SNI_A = ['suppressor', 'extmag', 'fmj', 'bipod', 'dualmag', 'sling'];
+  const SG_A = ['reddot', 'holo', 'grip', 'extmag', 'laser', 'suppressor', 'dualmag', 'sling'];
+  const PI_A = ['suppressor', 'extmag', 'laser', 'reddot', 'dualmag'];
+  const MOD = (era, cls, allowed, list) => { for (const [id, name, nation, dmg, rate, mag, reserve, reload, spread, range, speed, extra] of list) WEAPONS[id] = Object.assign({ name, cls, era, nation, dmg, rate, mag, reserve, reload, spread, range, speed, auto: true, allowed }, extra || {}); };
+  MOD('cw', 'Assault Rifle', AR_A, [
+    ['ak47', 'AK-47', 'USSR', 34, 100, 30, 120, 2600, 0.055, 800, 0.93],
+    ['m16a1', 'M16A1', 'USA', 30, 86, 30, 120, 2400, 0.045, 780, 0.95],
+    ['famas', 'FAMAS F1', 'France', 28, 60, 25, 125, 2500, 0.05, 700, 0.96],
+    ['galil', 'Galil ARM', 'Israel', 32, 92, 35, 140, 2700, 0.055, 760, 0.9],
+    ['aug', 'AUG A1', 'Austria', 30, 86, 30, 120, 2600, 0.045, 800, 0.95],
+    ['fal', 'FN FAL', 'Belgium', 46, 150, 20, 100, 2700, 0.04, 950, 0.9, { auto: false }],
+  ]);
+  MOD('modern', 'Assault Rifle', AR_A, [
+    ['m4a1', 'M4A1', 'USA', 29, 75, 30, 150, 2200, 0.045, 760, 0.98],
+    ['m16a4', 'M16A4', 'USA', 32, 70, 30, 150, 2300, 0.035, 850, 0.95, { auto: false, burst: 3 }],
+    ['scarh', 'SCAR-H', 'Belgium', 40, 100, 20, 100, 2400, 0.05, 850, 0.92],
+    ['acr', 'ACR', 'USA', 30, 80, 30, 150, 2200, 0.04, 800, 0.97],
+    ['tar21', 'TAR-21', 'Israel', 31, 80, 30, 150, 2400, 0.05, 760, 0.96],
+    ['f2000', 'F2000', 'Belgium', 27, 63, 30, 150, 2500, 0.055, 720, 0.97],
+    ['an94', 'AN-94', 'Russia', 33, 66, 30, 150, 2600, 0.04, 820, 0.94, { auto: false, burst: 2 }],
+    ['xm8', 'XM8', 'USA', 29, 76, 30, 150, 2300, 0.045, 760, 0.97],
+  ]);
+  MOD('cw', 'SMG', SMG_A, [
+    ['mp5k', 'MP5K', 'W. Germany', 23, 66, 30, 150, 2000, 0.065, 420, 1.03],
+    ['uzi', 'Uzi', 'Israel', 22, 63, 32, 160, 2200, 0.075, 400, 1.04],
+    ['skorpion', 'Skorpion vz. 61', 'Czechoslovakia', 18, 50, 20, 120, 1900, 0.08, 330, 1.05],
+    ['ak74u', 'AK-74u', 'USSR', 26, 75, 30, 150, 2300, 0.06, 480, 1.02],
+    ['mac11', 'MAC-11', 'USA', 17, 46, 32, 160, 1800, 0.09, 300, 1.06],
+  ]);
+  MOD('modern', 'SMG', SMG_A, [
+    ['mp7', 'MP7', 'Germany', 23, 63, 40, 160, 2100, 0.06, 450, 1.04],
+    ['vector', 'Vector', 'USA', 21, 50, 25, 150, 2000, 0.055, 400, 1.04],
+    ['p90', 'P90', 'Belgium', 21, 66, 50, 150, 2800, 0.065, 420, 1.03],
+    ['ump45', 'UMP45', 'Germany', 28, 92, 25, 125, 2100, 0.06, 500, 1.02],
+    ['pp2000', 'PP-2000', 'Russia', 20, 60, 40, 160, 2000, 0.07, 380, 1.05],
+  ]);
+  MOD('cw', 'Machine Gun', LMG_A, [
+    ['m60', 'M60', 'USA', 36, 110, 100, 300, 6000, 0.07, 900, 0.78],
+    ['rpk', 'RPK', 'USSR', 33, 100, 45, 180, 4200, 0.065, 850, 0.82],
+    ['stoner63', 'Stoner 63', 'USA', 31, 80, 75, 225, 5000, 0.065, 820, 0.82],
+    ['rpd', 'RPD', 'USSR', 35, 92, 100, 300, 6000, 0.075, 850, 0.78],
+  ]);
+  MOD('modern', 'Machine Gun', LMG_A, [
+    ['mg4', 'MG4', 'Germany', 31, 76, 100, 300, 5600, 0.07, 850, 0.8],
+    ['lsat', 'LSAT', 'USA', 32, 85, 100, 300, 5800, 0.065, 870, 0.8],
+    ['l86', 'L86 LSW', 'UK', 34, 85, 30, 150, 3000, 0.05, 880, 0.85],
+  ]);
+  MOD('cw', 'Sniper', SNI_A, [
+    ['l96', 'L96A1', 'UK', 100, 1100, 5, 30, 3000, 0.07, 1500, 0.9, { auto: false, scoped: true, bolt: true }],
+    ['svd', 'Dragunov SVD', 'USSR', 70, 250, 10, 50, 2800, 0.07, 1300, 0.9, { auto: false, scoped: true }],
+    ['wa2000', 'WA2000', 'W. Germany', 70, 230, 6, 36, 2800, 0.07, 1300, 0.9, { auto: false, scoped: true }],
+    ['psg1', 'PSG1', 'W. Germany', 68, 220, 5, 35, 2600, 0.07, 1250, 0.9, { auto: false, scoped: true }],
+  ]);
+  MOD('modern', 'Sniper', SNI_A, [
+    ['m200', 'CheyTac M200', 'USA', 110, 1200, 5, 30, 3200, 0.07, 1600, 0.88, { auto: false, scoped: true, bolt: true }],
+    ['m82', 'Barrett M82', 'USA', 95, 300, 10, 40, 3600, 0.08, 1600, 0.85, { auto: false, scoped: true }],
+    ['dsr50', 'DSR 50', 'Germany', 110, 1300, 4, 28, 3000, 0.07, 1600, 0.9, { auto: false, scoped: true, bolt: true }],
+  ]);
+  MOD('cw', 'Rifle', AR_A, [['m14', 'M14', 'USA', 48, 170, 20, 100, 2600, 0.045, 950, 0.92, { auto: false }]]);
+  MOD('cw', 'Shotgun', SG_A, [
+    ['ithaca37', 'Ithaca 37', 'USA', 16, 800, 4, 32, 3200, 0.12, 280, 1.0, { auto: false, pellets: 8 }],
+    ['spas12', 'SPAS-12', 'Italy', 17, 900, 8, 32, 3500, 0.11, 290, 0.98, { auto: false, pellets: 8 }],
+  ]);
+  MOD('modern', 'Shotgun', SG_A, [
+    ['aa12', 'AA-12', 'USA', 10, 200, 8, 32, 3000, 0.16, 230, 0.96, { pellets: 8 }],
+    ['ksg', 'KSG', 'USA', 18, 950, 12, 36, 4000, 0.07, 330, 0.98, { auto: false, pellets: 6 }],
+    ['m1014', 'M1014', 'Italy', 13, 260, 6, 36, 3000, 0.13, 260, 1.0, { auto: false, pellets: 8 }],
+    ['m1887', 'Winchester 1887', 'USA', 18, 650, 6, 30, 3200, 0.14, 250, 1.0, { auto: false, pellets: 8 }],
+  ]);
+  MOD('cw', 'Pistol', PI_A, [
+    ['makarov', 'Makarov PM', 'USSR', 28, 140, 8, 48, 1600, 0.045, 360, 1.06, { auto: false, secondary: true }],
+    ['cz75', 'CZ75', 'Czechoslovakia', 30, 130, 12, 60, 1700, 0.045, 380, 1.05, { auto: false, secondary: true }],
+  ]);
+  MOD('modern', 'Pistol', PI_A, [
+    ['deagle', 'Desert Eagle', 'Israel', 60, 300, 7, 35, 2000, 0.04, 450, 1.03, { auto: false, secondary: true }],
+    ['glock18', 'Glock 18', 'Austria', 22, 55, 17, 85, 1700, 0.08, 330, 1.06, { secondary: true }],
+    ['usp45', 'USP .45', 'Germany', 34, 150, 12, 60, 1700, 0.04, 400, 1.05, { auto: false, secondary: true }],
+    ['m9', 'M9', 'USA', 30, 120, 15, 75, 1700, 0.045, 380, 1.05, { auto: false, secondary: true }],
+    ['fiveseven', 'Five-seven', 'Belgium', 30, 120, 20, 80, 1700, 0.045, 400, 1.05, { auto: false, secondary: true }],
+    ['b93r', 'Beretta 93R', 'Italy', 26, 55, 20, 80, 1800, 0.05, 380, 1.05, { auto: false, burst: 3, secondary: true }],
+  ]);
+  for (const id in WEAPONS) if (!WEAPONS[id].era) WEAPONS[id].era = 'ww2';
+  const ERAS = { ww2: 'WWII', cw: 'Cold War', modern: 'Modern' };
+  {
+  };
 
   // slot: only one attachment per slot
   const ATTACHMENTS = {
@@ -92,10 +181,15 @@
     rapidfire: { name: 'Rapid Fire', slot: 'ammo', desc: 'Tuned action: 25% faster fire rate, slightly more spread.' },
     fmj: { name: 'FMJ Rounds', slot: 'ammo', desc: 'Bullets punch through crates and sandbags (70% damage).' },
     sling: { name: 'Sling', slot: 'sling', desc: 'Carry it lighter: 6% faster movement and faster aiming.' },
+    reddot: { name: 'Red Dot Sight', slot: 'optic', desc: 'Clear reflex sight: tighter aim and faster aiming down sights.' },
+    holo: { name: 'Holographic Sight', slot: 'optic', desc: 'Wide holographic window: even tighter aim.' },
+    acog: { name: 'ACOG Scope', slot: 'optic', desc: '2.2x magnified scope for mid-range.' },
+    laser: { name: 'Laser Sight', slot: 'laser', desc: 'Hip-fire spread reduced by 35%.' },
+    gl: { name: 'Grenade Launcher', slot: 'under', desc: 'Underbarrel launcher with 3 explosive grenades (B key / RG button).' },
   };
 
-  const RECOIL = { 'SMG': 0.011, 'Assault Rifle': 0.017, 'Rifle': 0.03, 'Bolt-Action': 0.06, 'Shotgun': 0.07, 'Machine Gun': 0.014, 'Pistol': 0.028 };
-  const ADS_MULT = { 'SMG': 0.32, 'Assault Rifle': 0.22, 'Rifle': 0.14, 'Bolt-Action': 0.08, 'Shotgun': 0.75, 'Machine Gun': 0.3, 'Pistol': 0.35 };
+  const RECOIL = { 'Sniper': 0.07, 'SMG': 0.011, 'Assault Rifle': 0.017, 'Rifle': 0.03, 'Bolt-Action': 0.06, 'Shotgun': 0.07, 'Machine Gun': 0.014, 'Pistol': 0.028 };
+  const ADS_MULT = { 'Sniper': 0.08, 'SMG': 0.32, 'Assault Rifle': 0.22, 'Rifle': 0.14, 'Bolt-Action': 0.08, 'Shotgun': 0.75, 'Machine Gun': 0.3, 'Pistol': 0.35 };
 
   function cleanAtts(id, atts, max) {
     const w = WEAPONS[id];
@@ -121,10 +215,12 @@
       reserve: w.reserve, reload: w.reload, spread: w.spread, range: w.range, speed: w.speed,
       auto: w.auto, adsMult: ADS_MULT[w.cls], moveMult: 1.7, zoom: 1, suppressed: false, bayonet: false,
       bipod: false, recoil: RECOIL[w.cls], noFlash: false, fmj: false, rifleNades: 0, adsSpeed: 9, atts,
+      burst: w.burst || 0, hipMult: 1, optic: null, era: w.era,
     };
+    if (w.scoped) { s.zoom = w.cls === 'Sniper' ? 4 : 4; s.adsMult *= 0.35; s.adsSpeed = 6; s.optic = 'scope'; }
     for (const a of atts) {
       switch (a) {
-        case 'scope': s.zoom = 4; s.adsMult *= 0.35; s.range *= 1.3; s.adsSpeed = 6; break;
+        case 'scope': s.zoom = 4; s.adsMult *= 0.35; s.range *= 1.3; s.adsSpeed = 6; s.optic = 'scope'; break;
         case 'aperture': s.spread *= 0.75; s.adsMult *= 0.85; break;
         case 'grip': s.spread *= 0.7; s.moveMult = 1.35; s.recoil *= 0.6; break;
         case 'extmag': s.mag = Math.ceil(s.mag * 1.5); s.reserve = Math.ceil(s.reserve * 1.5); break;
@@ -138,6 +234,11 @@
         case 'rapidfire': s.rate *= 0.75; s.spread *= 1.12; break;
         case 'fmj': s.fmj = true; break;
         case 'sling': s.speed += 0.06; s.adsSpeed += 4; break;
+        case 'reddot': s.adsMult *= 0.82; s.adsSpeed += 2; s.optic = 'reddot'; break;
+        case 'holo': s.adsMult *= 0.75; s.adsSpeed += 1; s.optic = 'holo'; break;
+        case 'acog': s.zoom = 2.2; s.adsMult *= 0.55; s.range *= 1.15; s.optic = 'acog'; break;
+        case 'laser': s.hipMult = 0.65; break;
+        case 'gl': s.rifleNades = 3; s.launcher = true; break;
       }
     }
     return s;
@@ -575,7 +676,7 @@
   // Effective cone of fire for the current state.
   function currentSpread(st, ads, moving, stance, sprint, air) {
     stance = stanceOf(stance);
-    let s = st.spread * (ads ? st.adsMult : 1) * (moving ? st.moveMult : 1);
+    let s = st.spread * (ads ? st.adsMult : st.hipMult || 1) * (moving ? st.moveMult : 1);
     if (st.bipod && ads && (!moving || stance > 0)) s *= 0.35;
     if (stance === 1) s *= 0.8;
     if (stance === 2) s *= 0.6;
@@ -607,7 +708,7 @@
 
   const api = {
     MAP_W, MAP_H, PLAYER_R, BASE_SPEED, MAX_HP, SCORE_LIMIT, MATCH_MS, MAX_ATTACHMENTS, MAX_SEC_ATTACHMENTS,
-    HEAD_ZONE, HEADSHOT_MULT, WEAPONS, ATTACHMENTS, WALLS, SPAWNS, MAPS, MAP_IDS, MODES, MODE_IDS, STREAKS, STREAK_IDS, DEFAULT_STREAKS, POINTS, HEIGHTS, useMap,
+    HEAD_ZONE, HEADSHOT_MULT, WEAPONS, ATTACHMENTS, ERAS, WALLS, SPAWNS, MAPS, MAP_IDS, MODES, MODE_IDS, STREAKS, STREAK_IDS, DEFAULT_STREAKS, POINTS, HEIGHTS, useMap,
     computeStats, sanitizeLoadout, cleanAtts, resolveCircle, moveCircle, rayWalls, rayWorld, rayCylinder, rayCircle,
     hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, headZone, clamp,
     groundAt, stepMove, newMoveState, GRAVITY, JUMP_V,

@@ -684,9 +684,15 @@ class Room {
     const pulled = p.firePressedAt && now - p.firePressedAt < 350;
     if ((p.input.fire || pulled) && !p.sprintActive && !p.reloadEnd && now >= p.nextShot && this.state === 'playing') {
       if (g.ammo > 0) {
-        if (g.stats.auto || !p.triggerHeld || pulled) { this.fire(p, now); p.firePressedAt = 0; }
+        if (g.stats.burst) { if ((!p.triggerHeld || pulled) && !(p.burstLeft > 0)) { p.burstLeft = g.stats.burst; p.firePressedAt = 0; } }
+        else if (g.stats.auto || !p.triggerHeld || pulled) { this.fire(p, now); p.firePressedAt = 0; }
       } else if (g.reserve > 0) this.startReload(p, now);
       else if (p.slot === 0) this.swap(p, now);
+    }
+    // burst weapons: keep firing the rest of the burst, then pause
+    if (p.burstLeft > 0) {
+      if (g.ammo <= 0 || p.reloadEnd || !g.stats.burst) p.burstLeft = 0;
+      else if (now >= p.nextShot && this.state === 'playing') { this.fire(p, now); p.burstLeft--; if (!p.burstLeft) p.nextShot = now + g.stats.rate * 3.2; }
     }
     p.triggerHeld = p.input.fire;
     if (now - p.lastHurt > 4500 && p.hp < S.MAX_HP) p.hp = Math.min(S.MAX_HP, p.hp + 30 * dt);
@@ -797,7 +803,14 @@ function createBot(team, taken) {
   const p = basePlayer(pool[Math.floor(Math.random() * pool.length)] + ' [BOT]');
   const lo = BOT_LOADOUTS[Math.floor(Math.random() * BOT_LOADOUTS.length)];
   const streakPool = S.STREAK_IDS.slice().sort(() => Math.random() - 0.5);
-  p.pendingLoadout = S.sanitizeLoadout({ ...lo, secondary: SECONDARIES[Math.floor(Math.random() * SECONDARIES.length)], streaks: streakPool.slice(0, 3) });
+  let gun = lo;
+  if (Math.random() < 0.55) { // many bots carry Cold War and modern guns
+    const prim = Object.keys(S.WEAPONS).filter((k) => !S.WEAPONS[k].secondary && S.WEAPONS[k].era !== 'ww2');
+    const id = prim[Math.floor(Math.random() * prim.length)];
+    const al = S.WEAPONS[id].allowed.slice().sort(() => Math.random() - 0.5);
+    gun = { primary: id, atts: al.slice(0, Math.floor(Math.random() * 3)) };
+  }
+  p.pendingLoadout = S.sanitizeLoadout({ ...gun, secondary: SECONDARIES[Math.floor(Math.random() * SECONDARIES.length)], streaks: streakPool.slice(0, 3) });
   p.bot = { nextScan: 0, target: null, acquiredAt: 0, aimErr: 0, strafe: 1, strafeUntil: 0, nextPath: 0, lastPos: null, stuckCheck: 0 };
   p.team = team;
   return p;

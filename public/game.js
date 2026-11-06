@@ -46,7 +46,8 @@ function keyName(code) {
 const actionFor = (code) => Object.keys(settings.binds).find((a) => settings.binds[a] === code);
 
 // ============================================================= loadout UI
-const CLASSES = ['SMG', 'Assault Rifle', 'Rifle', 'Bolt-Action', 'Shotgun', 'Machine Gun'];
+const CLASSES = ['SMG', 'Assault Rifle', 'Rifle', 'Bolt-Action', 'Sniper', 'Shotgun', 'Machine Gun'];
+let eraFilter = loadSaved('fl_era', 'all');
 const SECONDARY_IDS = Object.keys(S.WEAPONS).filter((k) => S.WEAPONS[k].secondary);
 const PRIMARY_IDS = Object.keys(S.WEAPONS).filter((k) => !S.WEAPONS[k].secondary);
 let loadout = S.sanitizeLoadout(loadSaved('fl_loadout', { primary: 'thompson', atts: ['grip', 'aperture'], secondary: 'colt', secAtts: [] }));
@@ -85,12 +86,21 @@ function buildLoadout(el) {
   function render() {
     el.innerHTML = '';
     const w = S.WEAPONS[loadout.primary];
+    const inEra = (k) => eraFilter === 'all' || S.WEAPONS[k].era === eraFilter;
+    el.appendChild(div('lo-label', 'Era'));
+    const er = div('lo-classes');
+    for (const [e, label] of [['all', 'All eras'], ['ww2', 'WWII'], ['cw', 'Cold War'], ['modern', 'Modern']]) er.appendChild(btn(label, eraFilter === e, () => { eraFilter = e; save('fl_era', e); render(); }));
+    el.appendChild(er);
     el.appendChild(div('lo-label', 'Primary class'));
     const cr = div('lo-classes');
-    for (const c of CLASSES) cr.appendChild(btn(c, c === cls, () => { cls = c; loadout.primary = PRIMARY_IDS.find((k) => S.WEAPONS[k].cls === c); loadout.atts = []; commit(); }));
+    for (const c of CLASSES) {
+      const list = PRIMARY_IDS.filter((k) => S.WEAPONS[k].cls === c && inEra(k));
+      if (!list.length) continue;
+      cr.appendChild(btn(c, c === cls, () => { cls = c; loadout.primary = list[0]; loadout.atts = []; commit(); }));
+    }
     el.appendChild(cr);
     const wr = div('lo-weapons');
-    for (const k of PRIMARY_IDS.filter((k) => S.WEAPONS[k].cls === cls)) {
+    for (const k of PRIMARY_IDS.filter((k) => S.WEAPONS[k].cls === cls && (inEra(k) || k === loadout.primary))) {
       wr.appendChild(btn(S.WEAPONS[k].name, k === loadout.primary, () => { loadout.primary = k; commit(); }));
     }
     el.appendChild(wr);
@@ -117,7 +127,7 @@ function buildLoadout(el) {
     el.appendChild(div('lo-desc', desc));
     el.appendChild(div('lo-label', 'Sidearm'));
     const sr = div('lo-sec');
-    for (const k of SECONDARY_IDS) sr.appendChild(btn(S.WEAPONS[k].name, k === loadout.secondary, () => { loadout.secondary = k; commit(); }));
+    for (const k of SECONDARY_IDS.filter((k) => inEra(k) || k === loadout.secondary)) sr.appendChild(btn(S.WEAPONS[k].name, k === loadout.secondary, () => { loadout.secondary = k; loadout.secAtts = []; commit(); }));
     el.appendChild(sr);
     el.appendChild(div('lo-label', `Sidearm attachment (${loadout.secAtts.length}/${S.MAX_SEC_ATTACHMENTS})`));
     el.appendChild(attRow(loadout.secondary, loadout.secAtts, S.MAX_SEC_ATTACHMENTS, 'secAtts'));
@@ -186,7 +196,7 @@ function tone(freq, dur, vol, type) {
 const SHOT_SND = { // crack HP, body LP, body decay, thump Hz, tail decay, gain
   'SMG': [2400, 2300, 0.11, 100, 0.55, 0.5], 'Assault Rifle': [3000, 1900, 0.15, 85, 0.75, 0.62], 'Rifle': [3400, 1600, 0.2, 75, 0.95, 0.72],
   'Bolt-Action': [3800, 1400, 0.26, 62, 1.3, 0.85], 'Shotgun': [1800, 1100, 0.3, 58, 1.1, 0.85], 'Machine Gun': [3000, 1800, 0.13, 80, 0.65, 0.62],
-  'Pistol': [2800, 2600, 0.09, 115, 0.45, 0.42],
+  'Pistol': [2800, 2600, 0.09, 115, 0.45, 0.42], 'Sniper': [4200, 1200, 0.32, 55, 1.6, 0.95],
 };
 function volAt(x, y) { return Math.max(0, 1 - Math.hypot(x - pred.x, y - pred.y) / 2400); }
 function nz(dest, t, type, f, q, peak, attack, decay) {
@@ -1744,7 +1754,7 @@ function endPointer(e) {
 }
 addEventListener('pointerup', endPointer);
 addEventListener('pointercancel', endPointer);
-function lookScale() { const st = myStats(); return adsT > 0.5 ? (st.zoom > 1 ? 0.28 : 0.65) * settings.adsSens : 1; }
+function lookScale() { const st = myStats(); return adsT > 0.5 ? (st.zoom > 1 ? Math.min(0.5, 1.1 / st.zoom) : 0.65) * settings.adsSens : 1; }
 
 function stickVec(s) {
   if (!s) return [0, 0, 0];
@@ -2405,6 +2415,14 @@ function drawOverlay(now, players, st, scoped, ads, moving, sprint) {
     c.beginPath(); c.arc(cx, cy, R, rel - Math.PI / 2 - 0.3, rel - Math.PI / 2 + 0.3); c.stroke();
   }
   // crosshair
+  // reflex / holographic reticle while aiming
+  if (you.alive && !scoped && adsT > 0.75 && (st.optic === 'reddot' || st.optic === 'holo')) {
+    c.globalAlpha = Math.min(1, (adsT - 0.75) * 4);
+    c.fillStyle = '#ff3020'; c.strokeStyle = '#ff3020'; c.lineWidth = 1.6;
+    c.beginPath(); c.arc(cx, cy, 2.2, 0, TAU); c.fill();
+    if (st.optic === 'holo') { c.beginPath(); c.arc(cx, cy, 16, 0, TAU); c.stroke(); for (const a of [0, 1, 2, 3]) { const an = a * Math.PI / 2; c.beginPath(); c.moveTo(cx + Math.cos(an) * 16, cy + Math.sin(an) * 16); c.lineTo(cx + Math.cos(an) * 21, cy + Math.sin(an) * 21); c.stroke(); } }
+    c.globalAlpha = 1;
+  }
   if (you.alive && inGame() && !scoped) {
     const spread = S.currentSpread(st, ads, moving, pred.stance, sprint, pred.air);
     const gap = Math.max(4, Math.tan(spread) / Math.tan(camera.fov * Math.PI / 360) * H / 2);

@@ -27,14 +27,12 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - In the lobby, players pick a team and press **Ready**, and the host presses **Start Match**. After the match everyone returns to the lobby for a rematch.
   - The host can remove players. If the host leaves, another player becomes host.
 - **Bots** fill empty slots, so you can play alone or with a few friends. You pick 0–6 bots per team when you create a room, and a bot leaves when a real player joins.
-- **WWII-era weapons**:
-  - SMG: Thompson, MP40, PPSh-41, Type 100
-  - Assault rifle: StG 44, BAR
-  - Rifle: M1 Garand, Gewehr 43, SVT-40, M1A1 Carbine
-  - Bolt-action: Kar98k, Springfield, Mosin-Nagant, Arisaka
-  - Shotgun: Trench Gun, Double-Barreled
-  - Machine gun: MG42, DP-28, Type 99
-  - Pistol: M1911, P38, TT-33, Nambu, .357
+- **77 weapons from three eras.** Pick the era in the loadout: WWII, Cold War, Modern, or all.
+  - **WWII:** Thompson, MP40, PPSh-41, Type 100, StG 44, BAR, M1 Garand, Gewehr 43, SVT-40, M1A1 Carbine, Kar98k, Springfield, Mosin-Nagant, Arisaka, Trench Gun, Double-Barreled, MG42, DP-28, Type 99, and pistols.
+  - **Cold War:** AK-47, M16A1, FAMAS F1, Galil ARM, AUG A1, FN FAL, M14, MP5K, Uzi, Skorpion vz. 61, AK-74u, MAC-11, M60, RPK, Stoner 63, RPD, L96A1, Dragunov SVD, WA2000, PSG1, Ithaca 37, SPAS-12, Makarov PM, CZ75.
+  - **Modern:** M4A1, M16A4 (burst), SCAR-H, ACR, TAR-21, F2000, AN-94 (burst), XM8, MP7, Vector, P90, UMP45, PP-2000, MG4, LSAT, L86 LSW, CheyTac M200, Barrett M82, DSR 50, AA-12, KSG, M1014, Winchester 1887, Desert Eagle, Glock 18, USP .45, M9, Five-seven, Beretta 93R.
+  - Snipers come with a scope.
+- **Modern attachments:** Red Dot and Holographic sights (with a reticle when aiming), ACOG (2.2x), Laser Sight, and an underbarrel Grenade Launcher.
 - **14 attachments**, up to **3 per primary** (one per slot) plus **1 for your sidearm**. They are all modelled on the 3D gun:
   - Optic: **Telescopic Scope** (4x zoom with a scope overlay) or **Aperture Sight**
   - Muzzle: **Suppressor** (stays off the enemy radar), **Flash Hider** (less recoil, no flash) or **Rifle Grenade** (3 explosive launched grenades)
