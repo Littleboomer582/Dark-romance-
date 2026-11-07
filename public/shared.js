@@ -206,7 +206,7 @@
     return out;
   }
 
-  function computeStats(id, atts) {
+  function computeStats(id, atts, perks) {
     const w = WEAPONS[id] || WEAPONS.thompson;
     if (!WEAPONS[id]) id = 'thompson';
     atts = cleanAtts(id, atts, w.secondary ? MAX_SEC_ATTACHMENTS : MAX_ATTACHMENTS);
@@ -241,6 +241,12 @@
         case 'gl': s.rifleNades = 3; s.launcher = true; break;
       }
     }
+    if (Array.isArray(perks)) {
+      if (perks.includes('lightweight')) s.speed *= 1.08;
+      if (perks.includes('sleight')) s.reload *= 0.65;
+      if (perks.includes('quickdraw')) s.adsSpeed *= 1.5;
+      if (perks.includes('steady')) s.hipMult *= 0.65;
+    }
     return s;
   }
 
@@ -260,8 +266,52 @@
       atts: cleanAtts(primary, lo.atts, MAX_ATTACHMENTS),
       secAtts: cleanAtts(secondary, lo.secAtts, MAX_SEC_ATTACHMENTS),
       streaks: cleanStreaks(lo.streaks),
+      lethal: LETHALS[lo.lethal] ? lo.lethal : 'frag',
+      tactical: TACTICALS[lo.tactical] ? lo.tactical : 'flash',
+      perks: PERK_SLOTS.map((ids, i) => (Array.isArray(lo.perks) && ids.includes(lo.perks[i]) ? lo.perks[i] : DEFAULT_PERKS[i])),
     };
   }
+
+  // -------------------------------------------------------------------- equipment, perks, starter classes
+  const LETHALS = {
+    frag: { name: 'Frag Grenade', count: 2, desc: 'Bounces off walls, explodes after 2.4 seconds.' },
+    semtex: { name: 'Semtex', count: 2, desc: 'Sticky grenade: sticks to walls, the ground and enemies, then explodes.' },
+    molotov: { name: 'Molotov', count: 1, desc: 'Shatters on impact into a pool of fire that burns for 6 seconds.' },
+    knife: { name: 'Throwing Knife', count: 2, desc: 'Silent, flies straight and kills in one hit.' },
+  };
+  const TACTICALS = {
+    flash: { name: 'Flashbang', count: 2, desc: 'Blinds enemies who are looking at it for up to 4 seconds.' },
+    stun: { name: 'Stun Grenade', count: 2, desc: 'Dazes enemies in the blast: slow, shaky aim and poor accuracy for up to 4 seconds.' },
+    smoke: { name: 'Smoke Grenade', count: 1, desc: 'A thick smoke screen for 12 seconds. Blocks sight lines.' },
+  };
+  const PERKS = {
+    scavenger: { name: 'Scavenger', desc: 'Fallen enemies drop ammo packs. Walk over one to refill ammo and get a lethal back.' },
+    lightweight: { name: 'Lightweight', desc: 'Move 8% faster.' },
+    ghost: { name: 'Ghost', desc: 'Invisible to enemy recon planes.' },
+    flak: { name: 'Flak Jacket', desc: 'Take 45% less damage from explosives and fire.' },
+    hardline: { name: 'Hardline', desc: 'Scorestreaks cost 20% fewer points.' },
+    sleight: { name: 'Sleight of Hand', desc: 'Reload 35% faster.' },
+    quickdraw: { name: 'Quickdraw', desc: 'Aim down sights 50% faster.' },
+    dangerclose: { name: 'Danger Close', desc: 'Your explosives do 25% more damage.' },
+    steady: { name: 'Steady Aim', desc: 'Hip-fire is 35% more accurate.' },
+    tacmask: { name: 'Tactical Mask', desc: 'Flashbangs and stun grenades are 80% weaker on you.' },
+    deadsilence: { name: 'Dead Silence', desc: 'Your footsteps make no sound.' },
+    coldblooded: { name: 'Cold-Blooded', desc: 'Enemies do not see your name, and bots are slower to spot you.' },
+  };
+  const PERK_SLOTS = [['scavenger', 'lightweight', 'ghost', 'flak'], ['sleight', 'hardline', 'quickdraw', 'dangerclose'], ['steady', 'tacmask', 'deadsilence', 'coldblooded']];
+  const DEFAULT_PERKS = ['lightweight', 'sleight', 'steady'];
+  const streakCost = (id, perks) => Math.round(STREAKS[id].cost * (Array.isArray(perks) && perks.includes('hardline') ? 0.8 : 1));
+  // ready-made classes: pick one, then change anything you like
+  const STARTER_CLASSES = [
+    { name: 'Assault', desc: 'All-round rifleman.', lo: { primary: 'm4a1', atts: ['reddot', 'grip'], secondary: 'm9', lethal: 'frag', tactical: 'flash', perks: ['lightweight', 'sleight', 'steady'] } },
+    { name: 'Run & Gun', desc: 'Fast SMG flanker.', lo: { primary: 'mp5k', atts: ['rapidfire', 'laser'], secondary: 'usp45', lethal: 'semtex', tactical: 'stun', perks: ['lightweight', 'quickdraw', 'deadsilence'] } },
+    { name: 'Sniper', desc: 'Long range, hidden from recon.', lo: { primary: 'l96', atts: ['fmj'], secondary: 'deagle', lethal: 'knife', tactical: 'smoke', perks: ['ghost', 'quickdraw', 'coldblooded'] } },
+    { name: 'Support', desc: 'Machine gun that holds ground.', lo: { primary: 'm60', atts: ['bipod', 'grip'], secondary: 'm9', lethal: 'frag', tactical: 'smoke', perks: ['flak', 'hardline', 'tacmask'] } },
+    { name: 'Breacher', desc: 'Shotgun for close quarters.', lo: { primary: 'spas12', atts: ['grip'], secondary: 'glock18', lethal: 'molotov', tactical: 'flash', perks: ['scavenger', 'sleight', 'deadsilence'] } },
+    { name: 'Stealth', desc: 'Silenced and off the radar.', lo: { primary: 'ump45', atts: ['suppressor', 'reddot'], secondary: 'fiveseven', secAtts: ['suppressor'], lethal: 'knife', tactical: 'smoke', perks: ['ghost', 'hardline', 'coldblooded'] } },
+    { name: 'WWII Rifleman', desc: 'Garand and a .45.', lo: { primary: 'garand', atts: ['aperture', 'riflenade'], secondary: 'colt', lethal: 'frag', tactical: 'smoke', perks: ['scavenger', 'sleight', 'steady'] } },
+    { name: 'WWII Commando', desc: 'Silenced Thompson.', lo: { primary: 'thompson', atts: ['suppressor', 'grip'], secondary: 'colt', lethal: 'molotov', tactical: 'stun', perks: ['lightweight', 'quickdraw', 'deadsilence'] } },
+  ];
 
   // -------------------------------------------------------------------- map
   // k: wall | crate | sand
@@ -712,6 +762,7 @@
     computeStats, sanitizeLoadout, cleanAtts, resolveCircle, moveCircle, rayWalls, rayWorld, rayCylinder, rayCircle,
     hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, headZone, clamp,
     groundAt, stepMove, newMoveState, GRAVITY, JUMP_V,
+    LETHALS, TACTICALS, PERKS, PERK_SLOTS, DEFAULT_PERKS, STARTER_CLASSES, streakCost,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Shared = api;

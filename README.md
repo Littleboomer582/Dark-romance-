@@ -68,6 +68,33 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - **Slide:** sprint, then press crouch.
   - **Prone:** slow, but steadier and harder to hit; the bipod works prone.
   - Jumping makes shots inaccurate.
+- **Starter classes:** eight ready-made classes, each a full setup: Assault, Run & Gun, Sniper, Support, Breacher, Stealth, WWII Rifleman and WWII Commando. Pick one, then change anything you like.
+- **Equipment**:
+  - **Lethal** (G):
+    - **Frag Grenade:** bounces, then explodes.
+    - **Semtex:** sticks to walls, the ground and enemies.
+    - **Molotov:** leaves a pool of fire for 6 seconds.
+    - **Throwing Knife:** a silent one-hit kill.
+  - **Tactical** (F):
+    - **Flashbang:** whites out the screen of anyone looking at it.
+    - **Stun Grenade:** slow, shaky aim and poor accuracy.
+    - **Smoke Grenade:** a 12-second smoke screen that also blocks bots' vision.
+- **Perks:** one from each of three slots.
+  - **Perk 1:**
+    - **Scavenger:** fallen enemies drop ammo packs that refill your ammo and a lethal.
+    - **Lightweight:** move faster.
+    - **Ghost:** hidden from enemy recon planes.
+    - **Flak Jacket:** less explosive and fire damage.
+  - **Perk 2:**
+    - **Sleight of Hand:** faster reloads.
+    - **Hardline:** cheaper scorestreaks.
+    - **Quickdraw:** faster aiming down sights.
+    - **Danger Close:** stronger explosives.
+  - **Perk 3:**
+    - **Steady Aim:** better hip-fire.
+    - **Tactical Mask:** resists flash and stun.
+    - **Dead Silence:** your footsteps are silent; everyone else's footsteps can be heard.
+    - **Cold-Blooded:** no name tag for enemies, and bots are slower to spot you.
 - **Scorestreaks**:
   - **Earning points:** kills (+100), headshots (+25), assists (+50), and objectives: capturing or neutralizing Domination flags, taking, capturing or returning CTF flags, and holding the HQ. Points reset when you die.
   - **Choosing:** pick 3 in your loadout. Keys 5, 6 and 7 use them in cost order.
@@ -156,7 +183,7 @@ If the app is hosted somewhere other than the game server, point it at the serve
 | Crouch / Slide | C (while sprinting: slide), or hold Ctrl | **↧** (tap while sprinting: slide) |
 | Prone | Z, or hold C | hold **↧** |
 | Reload / Swap | R / Q or mouse wheel | **R** / **⇆** |
-| Grenade / Melee | G / V | **G** / **⚔** |
+| Lethal / Tactical / Melee | G / F / V | **G** / **TAC** / **⚔** |
 | Rifle grenade | B | **RG** |
 | Scorestreaks | 5 / 6 / 7 | tap the button that appears |
 | Scores / Loadout | Tab / L | ☰ / ⚙ |

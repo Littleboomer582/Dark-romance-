@@ -18,13 +18,13 @@ function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 // ================================================================ settings
 const DEFAULT_BINDS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', sprint: 'ShiftLeft',
-  crouch: 'KeyC', prone: 'KeyZ', holdCrouch: 'ControlLeft', reload: 'KeyR', swap: 'KeyQ', grenade: 'KeyG',
+  crouch: 'KeyC', prone: 'KeyZ', holdCrouch: 'ControlLeft', reload: 'KeyR', swap: 'KeyQ', grenade: 'KeyG', tactical: 'KeyF',
   melee: 'KeyV', rifleNade: 'KeyB', ks1: 'Digit5', ks2: 'Digit6', ks3: 'Digit7', scores: 'Tab', loadout: 'KeyL',
 };
 const BIND_LABELS = {
   forward: 'Move forward', back: 'Move back', left: 'Move left', right: 'Move right', jump: 'Jump', sprint: 'Sprint',
   crouch: 'Crouch / slide (hold: prone)', prone: 'Prone', holdCrouch: 'Hold to crouch', reload: 'Reload', swap: 'Switch weapon',
-  grenade: 'Throw grenade', melee: 'Melee', rifleNade: 'Rifle grenade', ks1: 'Scorestreak 1', ks2: 'Scorestreak 2', ks3: 'Scorestreak 3',
+  grenade: 'Throw lethal (grenade, knife...)', tactical: 'Throw tactical (flash, stun, smoke)', melee: 'Melee', rifleNade: 'Rifle grenade', ks1: 'Scorestreak 1', ks2: 'Scorestreak 2', ks3: 'Scorestreak 3',
   scores: 'Scoreboard', loadout: 'Change loadout',
 };
 // keys 5/6/7 fire your 1st/2nd/3rd chosen scorestreak
@@ -55,7 +55,7 @@ let loadout = S.sanitizeLoadout(loadSaved('fl_loadout', { primary: 'thompson', a
 function buildLoadout(el) {
   let cls = S.WEAPONS[loadout.primary].cls;
   let streakSel = loadout.streaks.slice(), ksDesc = '';
-  let desc = '';
+  let desc = '', eqDesc = '';
   const btn = (text, on, onClick, disabled, title) => {
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = text;
@@ -87,6 +87,19 @@ function buildLoadout(el) {
     el.innerHTML = '';
     const w = S.WEAPONS[loadout.primary];
     const inEra = (k) => eraFilter === 'all' || S.WEAPONS[k].era === eraFilter;
+    el.appendChild(div('lo-label', 'Starter classes · pick one, then change anything you like'));
+    const sc = div('lo-classes starter');
+    for (const c of S.STARTER_CLASSES) {
+      const lo = S.sanitizeLoadout(Object.assign({}, c.lo, { streaks: loadout.streaks }));
+      const same = ['primary', 'secondary', 'lethal', 'tactical'].every((k) => lo[k] === loadout[k]) && lo.perks.join() === loadout.perks.join() && lo.atts.join() === loadout.atts.join();
+      sc.appendChild(btn(c.name, same, () => {
+        loadout = lo; cls = S.WEAPONS[lo.primary].cls;
+        if (eraFilter !== 'all' && S.WEAPONS[lo.primary].era !== eraFilter) { eraFilter = 'all'; save('fl_era', 'all'); }
+        desc = c.name + ': ' + c.desc + ' ' + S.WEAPONS[lo.primary].name + ', ' + S.WEAPONS[lo.secondary].name + ', ' + S.LETHALS[lo.lethal].name + ', ' + S.TACTICALS[lo.tactical].name + ', ' + lo.perks.map((k) => S.PERKS[k].name).join(', ') + '.';
+        commit();
+      }, false, c.desc));
+    }
+    el.appendChild(sc);
     el.appendChild(div('lo-label', 'Era'));
     const er = div('lo-classes');
     for (const [e, label] of [['all', 'All eras'], ['ww2', 'WWII'], ['cw', 'Cold War'], ['modern', 'Modern']]) er.appendChild(btn(label, eraFilter === e, () => { eraFilter = e; save('fl_era', e); render(); }));
@@ -104,7 +117,7 @@ function buildLoadout(el) {
       wr.appendChild(btn(S.WEAPONS[k].name, k === loadout.primary, () => { loadout.primary = k; commit(); }));
     }
     el.appendChild(wr);
-    const st = S.computeStats(loadout.primary, loadout.atts);
+    const st = S.computeStats(loadout.primary, loadout.atts, loadout.perks);
     const stats = div('lo-stats');
     const bars = [
       ['Damage', Math.min(1, (st.dmg * st.pellets) / 120)],
@@ -131,11 +144,26 @@ function buildLoadout(el) {
     el.appendChild(sr);
     el.appendChild(div('lo-label', `Sidearm attachment (${loadout.secAtts.length}/${S.MAX_SEC_ATTACHMENTS})`));
     el.appendChild(attRow(loadout.secondary, loadout.secAtts, S.MAX_SEC_ATTACHMENTS, 'secAtts'));
+    const pickRow = (label, table, key) => {
+      el.appendChild(div('lo-label', label));
+      const r = div('lo-atts');
+      for (const id of Object.keys(table)) r.appendChild(btn(table[id].name, loadout[key] === id, () => { loadout[key] = id; eqDesc = table[id].name + ': ' + table[id].desc; commit(); }, false, table[id].desc));
+      el.appendChild(r);
+    };
+    pickRow('Lethal equipment', S.LETHALS, 'lethal');
+    pickRow('Tactical equipment', S.TACTICALS, 'tactical');
+    S.PERK_SLOTS.forEach((ids, i) => {
+      el.appendChild(div('lo-label', 'Perk ' + (i + 1)));
+      const r = div('lo-atts');
+      for (const id of ids) r.appendChild(btn(S.PERKS[id].name, loadout.perks[i] === id, () => { loadout.perks = loadout.perks.slice(); loadout.perks[i] = id; eqDesc = S.PERKS[id].name + ': ' + S.PERKS[id].desc; commit(); }, false, S.PERKS[id].desc));
+      el.appendChild(r);
+    });
+    el.appendChild(div('lo-desc', eqDesc || loadout.perks.map((k) => S.PERKS[k].name + ': ' + S.PERKS[k].desc).join(' ')));
     el.appendChild(div('lo-label', `Scorestreaks (${streakSel.length}/3) · earn points with kills, assists and objectives without dying`));
     const kr = div('lo-atts ks-pick');
     for (const id of S.STREAK_IDS) {
       const on = streakSel.includes(id), d = S.STREAKS[id];
-      const b = btn(`${d.name} · ${d.cost}`, on, () => {
+      const b = btn(`${d.name} · ${S.streakCost(id, loadout.perks)}`, on, () => {
         if (on) streakSel = streakSel.filter((x) => x !== id);
         else if (streakSel.length < 3) streakSel = streakSel.concat([id]);
         ksDesc = d.name + ': ' + d.desc;
@@ -160,8 +188,8 @@ $('sens').addEventListener('input', () => { sens = +$('sens').value; $('sensVal'
 $('adsMode').value = loadSaved('fl_adsMode', 'hold');
 $('adsMode').addEventListener('change', () => { adsMode = $('adsMode').value; adsLatched = false; save('fl_adsMode', adsMode); });
 $('controlsHelp').innerHTML = isTouch
-  ? 'Left thumb: move (push all the way up to sprint). Drag on the right to look. FIRE buttons shoot (drag on them to aim). AIM aims down sights, JUMP jumps, &#8615; crouch (tap while sprinting to slide, hold to go prone), R reload, &#8646; swap, G grenade, &#9876; melee, RG rifle grenade.'
-  : 'Click to lock the mouse &middot; WASD move &middot; Mouse look &middot; Left click fire &middot; Right click aim down sights &middot; Shift sprint &middot; Space jump &middot; C crouch (while sprinting: slide, hold: prone) &middot; Z prone &middot; Ctrl hold crouch &middot; R reload &middot; Q / wheel swap &middot; G grenade &middot; V melee &middot; B rifle grenade &middot; Tab scores &middot; L loadout';
+  ? 'Left thumb: move (push all the way up to sprint). Drag on the right to look. FIRE buttons shoot (drag on them to aim). AIM aims down sights, JUMP jumps, &#8615; crouch (tap while sprinting to slide, hold to go prone), R reload, &#8646; swap, G lethal, TAC tactical, &#9876; melee, RG rifle grenade.'
+  : 'Click to lock the mouse &middot; WASD move &middot; Mouse look &middot; Left click fire &middot; Right click aim down sights &middot; Shift sprint &middot; Space jump &middot; C crouch (while sprinting: slide, hold: prone) &middot; Z prone &middot; Ctrl hold crouch &middot; R reload &middot; Q / wheel swap &middot; G lethal &middot; F tactical &middot; V melee &middot; B rifle grenade &middot; Tab scores &middot; L loadout';
 
 // ================================================================== audio
 let actx = null, noiseBuf = null, soundsThisFrame = 0, master = null;
@@ -394,9 +422,9 @@ function onMessage(m) {
 }
 
 function myStats() {
-  if (!you || !you.g) return S.computeStats(loadout.primary, loadout.atts);
+  if (!you || !you.g) return S.computeStats(loadout.primary, loadout.atts, loadout.perks);
   const g = you.g[you.slot];
-  return S.computeStats(g[0], g[1]);
+  return S.computeStats(g[0], g[1], you.pk);
 }
 
 function onState(m) {
@@ -410,6 +438,7 @@ function onState(m) {
   if (m.md) currentMode = m.md;
   if (m.mp && (m.md !== objModeId || m.mp !== objMapId)) buildObjectives(m.mp, m.md || 'tdm');
   objState = m.ob;
+  match.fz = m.fz; match.sk = m.sk; match.sv = m.sv;
   match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb; match.rc = m.rc; match.jm = m.jm; match.dr = m.dr;
   lastStateAt = now;
   if (match.st === 'ended' && m.st === 'playing') { match.winner = null; killfeed.length = 0; }
@@ -612,8 +641,8 @@ function teamJammed() { return !!(you && match.jm && match.jm[myTeamIdx()] > 0);
 function streakHud(now) {
   if (!you) return '';
   const sp = you.sp || 0, list = myStreakList(), have = you.ks || [];
-  const next = list.find((id) => S.STREAKS[id].cost > sp);
-  let html = `<div class="ks-line">Score <b>${sp}</b>${next ? ` &middot; ${esc(S.STREAKS[next].name)} at ${S.STREAKS[next].cost}` : ''}</div>`;
+  const next = list.find((id) => S.streakCost(id, you.pk) > sp);
+  let html = `<div class="ks-line">Score <b>${sp}</b>${next ? ` &middot; ${esc(S.STREAKS[next].name)} at ${S.streakCost(next, you.pk)}` : ''}</div>`;
   if (teamRecon()) html += `<div class="ks-line ks-on">Recon plane overhead ${Math.ceil(match.rc[myTeamIdx()] / 1000)}s</div>`;
   if (teamJammed()) html += `<div class="ks-line ks-bad">Minimap jammed ${Math.ceil(match.jm[myTeamIdx()] / 1000)}s</div>`;
   for (const id of have) html += `<button class="ks-btn" data-ks="${id}">${isTouch ? '' : '[' + esc(ksKey(id)) + '] '}${esc(S.STREAKS[id].name)}</button>`;
@@ -687,7 +716,18 @@ function handleEvent(e, now) {
       if (e.i === myId) vmMelee = now;
       noise(4000, 0.06, 0.15);
       break;
-    case 'n': tone(300, 0.05, 0.05, 'sine'); break;
+    case 'n': tone(e.k === 'knife' ? 900 : 300, 0.05, 0.05, 'sine'); if (e.k === 'knife') noise(3000, 0.08, 0.12 * volAt(pred.x, pred.y)); break;
+    case 'fb': { // flashbang / stun grenade going off
+      spawnBang(e.x, e.z || 5, e.y, now, e.k);
+      noise(e.k ? 2600 : 900, e.k ? 0.35 : 0.5, volAt(e.x, e.y) * 0.9);
+      break;
+    }
+    case 'fl': if (e.i === myId) { flashT = { t: now, ms: e.ms }; tone(3200, Math.min(4, e.ms / 1000), 0.06 * Math.min(1, e.ms / 2500), 'sine'); } break;
+    case 'stn': if (e.i === myId) { stunT = { t: now, ms: e.ms }; tone(220, 0.6, 0.06, 'sawtooth'); } break;
+    case 'fire': burst(new THREE.Vector3(e.x, 6, e.y), 'fire', 16, 220); noise(1400, 0.4, volAt(e.x, e.y) * 0.5); break;
+    case 'smk': noise(600, 0.8, volAt(e.x, e.y) * 0.35); break;
+    case 'stk': if (e.i === myId) { centerMsg = { text: 'STUCK!\n' + nameOf(e.b), t: now }; tone(520, 0.3, 0.08, 'square'); } else if (e.b === myId) { notice('Stuck!', true, now); } break;
+    case 'scav': if (e.i === myId) { notice('Scavenger: ammo and a lethal picked up', true, now); tone(880, 0.08, 0.06, 'triangle'); } break;
     case 'rg': noise(700, 0.35, volAt(pred.x, pred.y) * 0.5); if (e.i === myId) { vmImpulse(0.08); if (vm && vm.gun.parts.rifleNade) vm.gun.parts.rifleNade.visible = false; } break;
     case 'end': match.winner = e.w; break;
     case 'obj': objNotice(e, now); break;
@@ -1619,14 +1659,103 @@ function spawnExplosion(x, h, y, now) {
   burst(p, 'fire', 14, 400); burst(p, 'dust', 20, 350); burst(p, 'smoke', 10, 120);
 }
 const nadeMeshes = [];
+const NADE_LOOK = { 0: 0x38452a, 1: 0x38452a, 2: 0x7a6a3a, 3: 0x4a6a3a, 5: 0x2d3540, 6: 0x5a5f66, 7: 0x8a8f94 };
 function nadeMesh(i, kind) {
+  kind = kind || 0;
+  if (nadeMeshes[i] && nadeMeshes[i].userData.kind !== kind) { scene.remove(nadeMeshes[i]); nadeMeshes[i] = null; }
   if (!nadeMeshes[i]) {
     const g = new THREE.Group();
-    g.add(new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 4.5, 8), M.nade));
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 2, 6), M.metal); cap.position.y = 3; g.add(cap);
+    if (kind === 4) { // throwing knife
+      g.add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 7, 1.4), M.steel));
+      const h = new THREE.Mesh(new THREE.BoxGeometry(0.7, 3.5, 1.2), M.dark); h.position.y = -4.5; g.add(h);
+    } else if (kind === 3) { // molotov: bottle with a burning rag
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.3, 6, 10), new THREE.MeshStandardMaterial({ color: 0x3a6a3a, roughness: 0.15, transparent: true, opacity: 0.8 })));
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.2, 3, 8), M.dark); neck.position.y = 4.4; g.add(neck);
+      const f = new THREE.Mesh(new THREE.SphereGeometry(1.4, 8, 6), PMAT.fire); f.position.y = 6.4; g.add(f);
+    } else {
+      g.add(new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, kind >= 5 ? 6 : 4.5, 8), new THREE.MeshStandardMaterial({ color: NADE_LOOK[kind] || 0x38452a, roughness: 0.6, metalness: kind >= 5 ? 0.4 : 0.1 })));
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 2, 6), M.metal); cap.position.y = kind >= 5 ? 3.8 : 3; g.add(cap);
+      if (kind === 2) { const led = new THREE.Mesh(new THREE.SphereGeometry(0.6, 6, 4), new THREE.MeshBasicMaterial({ color: 0xff2020 })); led.position.set(0, 1, 2.4); g.add(led); }
+    }
+    g.userData.kind = kind;
     scene.add(g); nadeMeshes[i] = g;
   }
   return nadeMeshes[i];
+}
+// ---- flashbang / stun bang, molotov fire, smoke screens, scavenger packs
+let flashT = null, stunT = null;
+const bangLight = new THREE.PointLight(0xffffff, 0, 900, 1.2); scene.add(bangLight);
+function spawnBang(x, h, y, now, flash) {
+  bangLight.position.set(x, h + 30, y); bangLight.intensity = flash ? 2.5e6 : 6e5; bangLight.userData.t = now;
+  const p = new THREE.Vector3(x, h + 8, y);
+  burst(p, 'spark', 20, 500); burst(p, 'smoke', 6, 90);
+}
+function footstep(x, y, sprint, crouch) {
+  const v = volAt(x, y);
+  const d = Math.hypot(x - pred.x, y - pred.y);
+  if (d > 1100 || v <= 0 || soundsThisFrame > 6) return;
+  noise(sprint ? 420 : 320, 0.07, (crouch ? 0.05 : sprint ? 0.16 : 0.1) * Math.max(0, 1 - d / 1100));
+}
+const fireFx = new Map(), cloudFx = new Map(), packFx = new Map();
+function updateZonesFx(now, dt) {
+  const seenF = new Set();
+  for (const [x, y, id] of match.fz || []) {
+    seenF.add(id);
+    let f = fireFx.get(id);
+    if (!f) {
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(80, 24), new THREE.MeshBasicMaterial({ color: 0xff6a20, transparent: true, opacity: 0.35, depthWrite: false }));
+      disc.rotation.x = -Math.PI / 2; disc.position.set(x, 1.5, y); scene.add(disc);
+      const light = new THREE.PointLight(0xff7a30, 6e4, 380, 1.6); light.position.set(x, 30, y); scene.add(light);
+      f = { disc, light, next: 0 }; fireFx.set(id, f);
+    }
+    f.light.intensity = 5e4 + Math.random() * 3e4;
+    f.disc.material.opacity = 0.28 + Math.random() * 0.1;
+    if (now >= f.next) {
+      f.next = now + 45;
+      const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * 75;
+      burst(new THREE.Vector3(x + Math.cos(a) * r, 4, y + Math.sin(a) * r), 'fire', 2, 60);
+      if (Math.random() < 0.25) burst(new THREE.Vector3(x + Math.cos(a) * r, 20, y + Math.sin(a) * r), 'smoke', 1, 30);
+    }
+  }
+  for (const [id, f] of fireFx) if (!seenF.has(id)) { scene.remove(f.disc); scene.remove(f.light); fireFx.delete(id); }
+  const seenC = new Set();
+  for (const [x, y, id, left] of match.sk || []) {
+    seenC.add(id);
+    let c = cloudFx.get(id);
+    if (!c) {
+      c = { sprites: [], born: now };
+      const tex = Guns.fxTextures().smoke;
+      for (let i = 0; i < 22; i++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: 0xc8c8c4, transparent: true, depthWrite: false, opacity: 0 }));
+        const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * 120;
+        sp.position.set(x + Math.cos(a) * r, 25 + Math.random() * 110, y + Math.sin(a) * r);
+        sp.userData.s = 150 + Math.random() * 110; sp.scale.setScalar(20);
+        scene.add(sp); c.sprites.push(sp);
+      }
+      cloudFx.set(id, c);
+    }
+    const grow = Math.min(1, (now - c.born) / 1500), fade = Math.min(1, left / 2500);
+    for (const sp of c.sprites) { sp.scale.setScalar(sp.userData.s * (0.35 + 0.65 * grow)); sp.material.opacity = 0.92 * Math.min(grow * 1.5, 1) * fade; sp.material.rotation += dt * 0.05; }
+  }
+  for (const [id, c] of cloudFx) if (!seenC.has(id)) { for (const sp of c.sprites) { scene.remove(sp); sp.material.dispose(); } cloudFx.delete(id); }
+  const seenP = new Set();
+  const scav = !!(you && you.pk && you.pk.includes('scavenger'));
+  for (const [x, y, id] of match.sv || []) {
+    if (!scav) break;
+    seenP.add(id);
+    let m = packFx.get(id);
+    if (!m) {
+      m = new THREE.Group();
+      m.add(new THREE.Mesh(new THREE.BoxGeometry(10, 6, 7), new THREE.MeshStandardMaterial({ color: 0x4a5a30, roughness: 0.8 })));
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(10.4, 1.2, 7.4), M.dark); strap.position.y = 1; m.add(strap);
+      const glow = new THREE.Mesh(new THREE.RingGeometry(9, 12, 20), new THREE.MeshBasicMaterial({ color: 0x9fe070, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+      glow.rotation.x = -Math.PI / 2; glow.position.y = -2.5; m.add(glow);
+      scene.add(m); packFx.set(id, m);
+    }
+    m.position.set(x, 6 + Math.sin(now / 300 + id) * 1.5, y); m.rotation.y += dt;
+  }
+  for (const [id, m] of packFx) if (!seenP.has(id)) { scene.remove(m); packFx.delete(id); }
+  if (bangLight.intensity > 0) bangLight.intensity = Math.max(0, 2.5e6 * (1 - (now - bangLight.userData.t) / 250));
 }
 
 // ================================================================== input
@@ -1666,6 +1795,7 @@ addEventListener('keydown', (e) => {
     case 'reload': send({ t: 'reload' }); break;
     case 'swap': send({ t: 'swap' }); break;
     case 'grenade': send({ t: 'nade' }); break;
+    case 'tactical': send({ t: 'tac' }); break;
     case 'melee': send({ t: 'melee' }); break;
     case 'rifleNade': send({ t: 'rg' }); break;
     case 'crouch': crouchDownAt = performance.now(); if (proneOn) { proneOn = false; crouchOn = true; } else crouchOn = !crouchOn; break;
@@ -1754,7 +1884,7 @@ function endPointer(e) {
 }
 addEventListener('pointerup', endPointer);
 addEventListener('pointercancel', endPointer);
-function lookScale() { const st = myStats(); return adsT > 0.5 ? (st.zoom > 1 ? Math.min(0.5, 1.1 / st.zoom) : 0.65) * settings.adsSens : 1; }
+function lookScale() { const st = myStats(); return (you && you.sn > 0 ? 0.35 : 1) * (adsT > 0.5 ? (st.zoom > 1 ? Math.min(0.5, 1.1 / st.zoom) : 0.65) * settings.adsSens : 1); }
 
 function stickVec(s) {
   if (!s) return [0, 0, 0];
@@ -1777,6 +1907,7 @@ bindBtn('tJump', () => pressJump());
 bindBtn('tReload', () => send({ t: 'reload' }));
 bindBtn('tSwap', () => send({ t: 'swap' }));
 bindBtn('tNade', () => send({ t: 'nade' }));
+bindBtn('tTac', () => send({ t: 'tac' }));
 bindBtn('tMelee', () => send({ t: 'melee' }));
 bindBtn('tRg', () => send({ t: 'rg' }));
 $('btnScores').addEventListener('click', () => toggleScores());
@@ -1910,7 +2041,7 @@ $('quality').addEventListener('change', () => { settings.quality = $('quality').
 function updateHelp() {
   if (isTouch) return;
   const k = (a) => keyName(settings.binds[a]);
-  $('controlsHelp').innerHTML = `Click to lock the mouse &middot; ${k('forward')}${k('left')}${k('back')}${k('right')} move &middot; Left click fire &middot; Right click aim &middot; ${k('sprint')} sprint &middot; ${k('jump')} jump &middot; ${k('crouch')} crouch / slide (hold: prone) &middot; ${k('prone')} prone &middot; ${k('reload')} reload &middot; ${k('swap')} swap &middot; ${k('grenade')} grenade &middot; ${k('melee')} melee &middot; ${k('ks1')}/${k('ks2')}/${k('ks3')} scorestreaks &middot; ${k('scores')} scores &middot; change keys in Settings`;
+  $('controlsHelp').innerHTML = `Click to lock the mouse &middot; ${k('forward')}${k('left')}${k('back')}${k('right')} move &middot; Left click fire &middot; Right click aim &middot; ${k('sprint')} sprint &middot; ${k('jump')} jump &middot; ${k('crouch')} crouch / slide (hold: prone) &middot; ${k('prone')} prone &middot; ${k('reload')} reload &middot; ${k('swap')} swap &middot; ${k('grenade')} lethal &middot; ${k('tactical')} tactical &middot; ${k('melee')} melee &middot; ${k('ks1')}/${k('ks2')}/${k('ks3')} scorestreaks &middot; ${k('scores')} scores &middot; change keys in Settings`;
 }
 updateHelp();
 $('armoryBack').addEventListener('click', () => showMenu(''));
@@ -2214,7 +2345,11 @@ function frame(now) {
     const lie = prone ? -1.45 : sliding ? 0.75 : 0;
     s.root.rotation.z += (lie - s.root.rotation.z) * Math.min(1, dt * 12);
     if (prone) { s.root.position.x -= Math.cos(p.a) * 30; s.root.position.z -= Math.sin(p.a) * 30; }
-    if (sp > 20) s.walk += dt * Math.min(sp, 320) / 22;
+    if (sp > 20) {
+      const prevStep = Math.floor(s.walk / Math.PI);
+      s.walk += dt * Math.min(sp, 320) / 22;
+      if (Math.floor(s.walk / Math.PI) !== prevStep && !(p.f & 8192) && !(p.f & 1024) && !prone && !sliding) footstep(p.x, p.y, !!(p.f & 128), crouch);
+    }
     const swing = sp > 20 ? Math.sin(s.walk) * (p.f & 128 ? 0.8 : 0.5) : 0;
     s.legL.rotation.z = swing; s.legR.rotation.z = -swing;
     const cy = crouch || sliding ? 0.55 : 1;
@@ -2238,7 +2373,7 @@ function frame(now) {
       const cp = Math.cos(pitch);
       const dx = Math.cos(yaw) * cp, dy = Math.sin(yaw) * cp, dh = Math.sin(pitch);
       const t = S.rayCylinder(pred.x, pred.y, eye - (p.z || 0), dx, dy, dh, p.x, p.y, S.PLAYER_R + 4, S.bodyHeight(stance));
-      showTag = t < 1500 && S.rayWorld(pred.x, pred.y, eye, dx, dy, dh, t) >= t - 1;
+      showTag = !(p.f & 16384) && t < 1500 && S.rayWorld(pred.x, pred.y, eye, dx, dy, dh, t) >= t - 1;
     }
     s.tag.visible = showTag;
     s.root.userData.canopy.visible = !!(p.f & 2048);
@@ -2250,12 +2385,13 @@ function frame(now) {
 
   // --- grenades
   nadeState.forEach((n, i) => {
-    const m = nadeMesh(i);
+    const m = nadeMesh(i, n[3]);
     m.visible = true;
     m.position.lerp(tmpV.set(n[0], n[2] + 2, n[1]), m.userData.init ? 0.5 : 1);
     m.userData.init = true;
     m.rotation.x += dt * 8;
-    m.scale.set(1, n[3] ? 1.8 : 1, 1);
+    m.scale.set(1, n[3] === 1 ? 1.8 : 1, 1);
+    if (n[3] === 4) { m.rotation.x = 0; m.rotation.z += dt * 25; }
   });
   for (let i = nadeState.length; i < nadeMeshes.length; i++) { nadeMeshes[i].visible = false; nadeMeshes[i].userData.init = false; }
 
@@ -2290,6 +2426,7 @@ function frame(now) {
   updateRecoil(dt);
   updateCasings(now, dt);
   updateSmoke(now, dt);
+  updateZonesFx(now, dt);
   if (muzzleLight.intensity > 0 && now - muzzleLight.userData.t > 55) muzzleLight.intensity = 0;
   if (vmMuzzleLight.intensity > 0 && now - vmMuzzleLight.userData.t > 55) vmMuzzleLight.intensity = 0;
   const showVm = !!(vm && you && you.alive && !scoped);
@@ -2399,6 +2536,23 @@ function drawOverlay(now, players, st, scoped, ads, moving, sprint) {
     c.lineWidth = 5; c.beginPath(); c.moveTo(cx - r, cy); c.lineTo(cx - r * 0.25, cy); c.moveTo(cx + r * 0.25, cy); c.lineTo(cx + r, cy); c.moveTo(cx, cy + r * 0.25); c.lineTo(cx, cy + r); c.stroke();
     c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx - 3, cy + 18); c.lineTo(cx + 3, cy + 18); c.closePath(); c.fillStyle = '#000'; c.fill();
   }
+  // stun: wavy haze and a shaking view
+  if (stunT && you.alive) {
+    const k = 1 - (now - stunT.t) / stunT.ms;
+    if (k <= 0) stunT = null;
+    else {
+      yaw += Math.sin(now / 90) * 0.0025 * k; pitch += Math.cos(now / 130) * 0.0018 * k;
+      const gr = c.createRadialGradient(cx, cy, Math.min(W, H) * 0.1, cx, cy, Math.max(W, H) * 0.65);
+      gr.addColorStop(0, `rgba(200,190,170,${0.12 * k})`); gr.addColorStop(1, `rgba(60,50,40,${0.65 * k})`);
+      c.fillStyle = gr; c.fillRect(0, 0, W, H);
+    }
+  }
+  // flashbang whiteout
+  if (flashT) {
+    const left = flashT.ms - (now - flashT.t);
+    if (left <= 0) flashT = null;
+    else { c.fillStyle = `rgba(255,255,250,${Math.min(1, left / 1200)})`; c.fillRect(0, 0, W, H); }
+  }
   // damage vignette
   const lowHp = you.alive && you.hp < 45;
   if (now - hurtFlash < 400 || lowHp) {
@@ -2476,7 +2630,7 @@ function drawMinimap(players) {
   for (const [id, p] of players) {
     if (id === myId || !(p.f & 2)) continue;
     const team = p.f & 1 ? 'axis' : 'allies';
-    if (team !== you.team && !(p.f & 8) && !teamRecon()) continue;
+    if (team !== you.team && !(p.f & 8) && !(teamRecon() && !(p.f & 4096))) continue; // Ghost hides from recon
     c.fillStyle = team === you.team ? '#5aa0ff' : '#ff5040';
     c.beginPath(); c.arc(p.x, p.y, 34, 0, TAU); c.fill();
   }
@@ -2548,7 +2702,7 @@ function updateHud(now) {
     setText('weaponAtts', g[1].map((a) => S.ATTACHMENTS[a].name).join(' + '));
   }
   setText('ammoMag', String(you.ammo)); setText('ammoRes', String(you.res));
-  setText('nades', 'Frag x' + you.nd + (you.rg ? ' · Rifle Gren x' + you.rg : '') + (you.rl > 0 ? ' · RELOADING' : you.ammo === 0 ? ' · RELOAD!' : ''));
+  setText('nades', (S.LETHALS[you.lt] || S.LETHALS.frag).name + ' x' + you.nd + ' · ' + (S.TACTICALS[you.tt] || S.TACTICALS.flash).name + ' x' + (you.td || 0) + (you.rg ? ' · Rifle Gren x' + you.rg : '') + (you.rl > 0 ? ' · RELOADING' : you.ammo === 0 ? ' · RELOAD!' : ''));
   setText('stance', pred.slide > 0 ? 'SLIDING' : pred.stance === 2 ? 'PRONE' : pred.stance === 1 ? 'CROUCHED' : pred.air ? 'AIRBORNE' : '');
   setText('ping', offlineMode ? 'OFFLINE' : Math.round(ping) + ' ms · ' + roomCode);
   if (isTouch) $('tRg').classList.toggle('hidden', !(you.rg > 0 && you.slot === 0));

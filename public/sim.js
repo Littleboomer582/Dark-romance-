@@ -7,8 +7,10 @@
 const SEND_EVERY = 2; // broadcast at 30 Hz
 const STREAK_WEAPONS = ['Airstrike', 'Mortar Barrage', 'Strafing Run', 'Artillery'];
 // blast size per explosion kind: radius, max damage, source height for cover checks, flat = ignore height
-const BLAST = { frag: [200, 150, 6], rg: [200, 150, 6], air: [210, 155, 6], mortar: [200, 150, 6], arty: [240, 170, 6], strafe: [55, 75, 160, true] };
+const BLAST = { semtex: [190, 150, 6], frag: [200, 150, 6], rg: [200, 150, 6], air: [210, 155, 6], mortar: [200, 150, 6], arty: [240, 170, 6], strafe: [55, 75, 160, true] };
 const RESPAWN_MS = 3500;
+const NADE_CODE = { frag: 0, rg: 1, semtex: 2, molotov: 3, knife: 4, flash: 5, stun: 6, smoke: 7 };
+const hasPerk = (p, id) => !!(p && (p.loadout || p.pendingLoadout) && (p.loadout || p.pendingLoadout).perks && (p.loadout || p.pendingLoadout).perks.includes(id));
 const MAX_PLAYERS_PER_ROOM = 16;
 const DOM_RADIUS = 100, FLAG_RADIUS = 38, FLAG_RETURN_MS = 15000, HQ_RADIUS = 140, HQ_MOVE_MS = 60000;
 // Quick Play cycles through every map and mode
@@ -101,8 +103,8 @@ const SECONDARIES = ['colt', 'p38', 'tt33', 'nambu', 'revolver'];
 const rooms = new Map();
 let nextId = 1;
 
-function makeGun(id, atts) {
-  const stats = S.computeStats(id, atts);
+function makeGun(id, atts, perks) {
+  const stats = S.computeStats(id, atts, perks);
   return { id, stats, ammo: stats.mag, reserve: stats.reserve };
 }
 
@@ -158,6 +160,7 @@ class Room {
     this.jam = { allies: 0, axis: 0 };
     this.strikes = [];
     this.drops = [];
+    this.fires = []; this.clouds = []; this.packs = [];
     for (const q of [...this.players.values()]) if (q.para) this.players.delete(q.id);
     for (const p of this.players.values()) {
       p.kills = 0; p.deaths = 0; p.sp = 0; p.ks = []; p.earned = [];
@@ -175,7 +178,7 @@ class Room {
   // give a player their guns without putting them on the battlefield (lobby)
   equip(p) {
     p.loadout = p.pendingLoadout;
-    p.guns = [makeGun(p.loadout.primary, p.loadout.atts), makeGun(p.loadout.secondary, p.loadout.secAtts)];
+    p.guns = [makeGun(p.loadout.primary, p.loadout.atts, p.loadout.perks), makeGun(p.loadout.secondary, p.loadout.secAtts, p.loadout.perks)];
     p.slot = 0; p.alive = false; p.respawnAt = Infinity;
   }
 
@@ -325,7 +328,7 @@ class Room {
     p.lastHurt = 0;
     p.spawnProtectUntil = now + 2000;
     p.loadout = p.pendingLoadout;
-    p.guns = [makeGun(p.loadout.primary, p.loadout.atts), makeGun(p.loadout.secondary, p.loadout.secAtts)];
+    p.guns = [makeGun(p.loadout.primary, p.loadout.atts, p.loadout.perks), makeGun(p.loadout.secondary, p.loadout.secAtts, p.loadout.perks)];
     p.rgren = p.guns[0].stats.rifleNades;
     p.nextRg = 0;
     Object.assign(p, S.newMoveState(p.x, p.y));
@@ -333,7 +336,9 @@ class Room {
     p.slot = 0;
     p.reloadEnd = 0;
     p.nextShot = now + 300;
-    p.nades = 2;
+    p.nades = S.LETHALS[p.loadout.lethal].count;
+    p.tacs = S.TACTICALS[p.loadout.tactical].count;
+    p.flashUntil = 0; p.stunUntil = 0;
     p.nextMelee = 0;
     p.radarUntil = 0;
     p.path = null;
@@ -379,6 +384,7 @@ class Room {
         if (this.state === 'playing' && this.mode === 'tdm') this.score[attacker.team]++;
       }
       victim.hurtBy = {};
+      if (attacker !== victim && this.packs) this.packs.push({ id: nextId++, x: victim.x, y: victim.y, until: now + 20000 });
       this.events.push({ e: 'k', k: attacker.id, v: victim.id, w: weapon, hs: hs ? 1 : 0 });
     }
   }
@@ -388,6 +394,7 @@ class Room {
     const st = g.stats;
     let spread = S.currentSpread(st, p.ads, p.moving, p.stance, p.sprintActive, p.air);
     if (p.bot) spread = Math.max(spread * 2, 0.025); // bots are less accurate than players
+    if (p.stunUntil > now) spread = spread * 2 + 0.03; // dazed
     p.spawnProtectUntil = 0;
     g.ammo--;
     p.nextShot = now + st.rate;
@@ -461,11 +468,87 @@ class Room {
   }
 
   throwNade(p, now) {
-    if (!p.alive || p.nades <= 0 || this.state !== 'playing') return;
+    if (!p.alive || p.nades <= 0 || this.state !== 'playing' || now < (p.nextThrow || 0)) return;
     p.nades--;
+    p.nextThrow = now + 600;
     p.spawnProtectUntil = 0;
-    this.launch(p, 'frag', 620, 180, now, 2400);
-    this.events.push({ e: 'n', i: p.id });
+    const k = p.loadout.lethal;
+    if (k === 'knife') this.launch(p, 'knife', 1500, 40, now, 3000);
+    else if (k === 'molotov') this.launch(p, 'molotov', 600, 170, now, 5000);
+    else if (k === 'semtex') this.launch(p, 'semtex', 600, 180, now, 2600);
+    else this.launch(p, 'frag', 620, 180, now, 2400);
+    this.events.push({ e: 'n', i: p.id, k });
+  }
+  throwTactical(p, now) {
+    if (!p.alive || !(p.tacs > 0) || this.state !== 'playing' || now < (p.nextThrow || 0)) return;
+    p.tacs--;
+    p.nextThrow = now + 600;
+    p.spawnProtectUntil = 0;
+    const k = p.loadout.tactical;
+    this.launch(p, k, 620, 180, now, k === 'smoke' ? 1200 : 1500);
+    this.events.push({ e: 'n', i: p.id, k });
+  }
+  // flashbang / stun grenade: affects whoever is near (and, for a flash, looking at it)
+  bang(n, now) {
+    n.dead = true;
+    const flash = n.kind === 'flash', R = flash ? 700 : 320;
+    this.events.push({ e: 'fb', x: n.x | 0, y: n.y | 0, z: Math.max(0, n.h) | 0, k: flash ? 1 : 0 });
+    for (const q of this.players.values()) {
+      if (!q.alive || (q.team === n.team && q.id !== n.owner)) continue;
+      const eye = q.z + S.eyeHeight(q.stance);
+      const d = Math.hypot(q.x - n.x, q.y - n.y, (eye - n.h) * 0.6);
+      if (d > R || !S.hasLOS3(n.x, n.y, Math.max(n.h, 6), q.x, q.y, eye)) continue;
+      let k = 1 - d / R;
+      if (flash) {
+        const a = Math.atan2(n.y - q.y, n.x - q.x) - q.ang;
+        const facing = Math.cos(Math.atan2(Math.sin(a), Math.cos(a)));
+        k *= facing > 0.5 ? 1 : facing > 0 ? 0.6 : 0.3;
+        k = Math.min(1, k * 1.6);
+      }
+      if (hasPerk(q, 'tacmask')) k *= 0.2;
+      const ms = Math.round(4000 * k);
+      if (ms < 300) continue;
+      if (flash) q.flashUntil = Math.max(q.flashUntil || 0, now + ms); else q.stunUntil = Math.max(q.stunUntil || 0, now + ms);
+      if (q.bot && flash) q.bot.target = null;
+      this.events.push({ e: flash ? 'fl' : 'stn', i: q.id, ms });
+    }
+  }
+  ignite(n, now) {
+    n.dead = true;
+    this.fires.push({ id: nextId++, x: n.x, y: n.y, until: now + 6000, owner: n.owner, team: n.team, next: 0 });
+    this.events.push({ e: 'fire', x: n.x | 0, y: n.y | 0 });
+  }
+  smokeBlocks(x0, y0, x1, y1) {
+    for (const c of this.clouds) {
+      const dx = x1 - x0, dy = y1 - y0, L2 = dx * dx + dy * dy || 1;
+      const t = S.clamp(((c.x - x0) * dx + (c.y - y0) * dy) / L2, 0, 1);
+      if (Math.hypot(x0 + dx * t - c.x, y0 + dy * t - c.y) < 130) return true;
+    }
+    return false;
+  }
+  updateZones(now) {
+    this.clouds = this.clouds.filter((c) => now < c.until);
+    this.fires = this.fires.filter((f) => now < f.until);
+    for (const f of this.fires) {
+      if (now < f.next) continue;
+      f.next = now + 250;
+      const owner = this.players.get(f.owner) || { id: f.owner, team: f.team, kills: 0, x: f.x, y: f.y };
+      for (const q of this.players.values()) {
+        if (!q.alive || q.z > 30 || (q.team === f.team && q.id !== f.owner) || Math.hypot(q.x - f.x, q.y - f.y) > 85) continue;
+        q.spawnProtectUntil = Math.min(q.spawnProtectUntil, now);
+        this.damage(q, 12 * (hasPerk(q, 'flak') ? 0.55 : 1) * (hasPerk(owner, 'dangerclose') ? 1.25 : 1), owner, 'Molotov', now, false);
+      }
+    }
+    // scavenger packs
+    this.packs = this.packs.filter((k) => now < k.until && !k.used);
+    for (const k of this.packs) for (const q of this.players.values()) {
+      if (k.used || !q.alive || !hasPerk(q, 'scavenger') || Math.hypot(q.x - k.x, q.y - k.y) > 42) continue;
+      k.used = true;
+      for (const g of q.guns) g.reserve = Math.max(g.reserve, g.stats.reserve);
+      q.nades = Math.min(S.LETHALS[q.loadout.lethal].count, q.nades + 1);
+      q.rgren = Math.max(q.rgren || 0, Math.min(1, q.guns[0].stats.rifleNades));
+      this.events.push({ e: 'scav', i: q.id });
+    }
   }
 
   fireRifleNade(p, now) {
@@ -480,10 +563,14 @@ class Room {
   }
 
   explode(n, now) {
+    if (n.kind === 'flash' || n.kind === 'stun') return this.bang(n, now);
+    if (n.kind === 'molotov') return this.ignite(n, now);
+    if (n.kind === 'smoke') { n.dead = true; this.clouds.push({ id: nextId++, x: n.x, y: n.y, until: now + 12000 }); this.events.push({ e: 'smk', x: n.x | 0, y: n.y | 0 }); return; }
+    if (n.kind === 'knife') { n.dead = true; return; }
     n.dead = true;
     this.events.push({ e: 'x', x: n.x | 0, y: n.y | 0, z: Math.max(0, n.h) | 0, sm: n.kind === 'strafe' ? 1 : 0 });
     const owner = this.players.get(n.owner) || { id: n.owner, team: n.team, kills: 0 };
-    const name = { rg: 'Rifle Grenade', air: 'Airstrike', mortar: 'Mortar Barrage', arty: 'Artillery', strafe: 'Strafing Run' }[n.kind] || 'Frag Grenade';
+    const name = { semtex: 'Semtex', rg: 'Rifle Grenade', air: 'Airstrike', mortar: 'Mortar Barrage', arty: 'Artillery', strafe: 'Strafing Run' }[n.kind] || 'Frag Grenade';
     const streak = STREAK_WEAPONS.includes(name);
     const [R, DMG, SRC, flat] = BLAST[n.kind] || BLAST.frag;
     for (const q of this.players.values()) {
@@ -493,7 +580,8 @@ class Room {
       if (d > R || !S.hasLOS3(n.x, n.y, Math.max(n.h, SRC), q.x, q.y, qh)) continue;
       q.spawnProtectUntil = Math.min(q.spawnProtectUntil, now);
       const core = R * 0.3;
-      this.damage(q, d < core ? DMG : DMG * (1 - (d - core) / (R - core)), owner, name, now, false);
+      const mult = (hasPerk(q, 'flak') ? 0.55 : 1) * (!streak && hasPerk(owner, 'dangerclose') ? 1.25 : 1);
+      this.damage(q, (d < core ? DMG : DMG * (1 - (d - core) / (R - core))) * mult, owner, name, now, false);
     }
   }
 
@@ -505,7 +593,7 @@ class Room {
     const chosen = (p.loadout || p.pendingLoadout).streaks || S.DEFAULT_STREAKS;
     p.earned = p.earned || [];
     for (const id of chosen) {
-      if (S.STREAKS[id].cost <= p.sp && !p.earned.includes(id)) { p.earned.push(id); p.ks.push(id); this.events.push({ e: 'ksE', i: p.id, k: id }); }
+      if (S.streakCost(id, (p.loadout || p.pendingLoadout).perks) <= p.sp && !p.earned.includes(id)) { p.earned.push(id); p.ks.push(id); this.events.push({ e: 'ksE', i: p.id, k: id }); }
     }
   }
   awardNear(x, y, r, team, pts, why, now) {
@@ -527,7 +615,7 @@ class Room {
         if (!q.alive || q.team !== d.team || d.used.includes(q.id) || Math.hypot(q.x - d.x, q.y - d.y) > 46) continue;
         d.used.push(q.id);
         for (const g of q.guns) { g.ammo = g.stats.mag; g.reserve = g.stats.reserve; }
-        q.nades = 2; q.rgren = q.guns[0].stats.rifleNades; q.hp = S.MAX_HP;
+        q.nades = S.LETHALS[q.loadout.lethal].count; q.tacs = S.TACTICALS[q.loadout.tactical].count; q.rgren = q.guns[0].stats.rifleNades; q.hp = S.MAX_HP;
         this.events.push({ e: 'sup', i: q.id });
       }
     }
@@ -631,26 +719,54 @@ class Room {
   updateNades(dt, now) {
     for (const n of this.nades) {
       n.vh -= 900 * dt;
-      if (n.kind === 'rg') {
+      if (n.stuck) { // semtex stuck to a surface or a player
+        const q = n.stuckTo && this.players.get(n.stuckTo);
+        if (q && q.alive) { n.x = q.x; n.y = q.y; n.h = q.z + S.bodyHeight(q.stance) * 0.6; }
+        if (now >= n.explodeAt) this.explode(n, now);
+        continue;
+      }
+      if (n.kind === 'rg' || n.kind === 'knife') {
+        if (n.kind === 'knife') n.vh += 600 * dt; // knives fly flatter
         const sx = n.vx * dt, sy = n.vy * dt, sh = n.vh * dt;
         const len = Math.hypot(sx, sy, sh) || 1;
         const t = S.rayWorld(n.x, n.y, n.h, sx / len, sy / len, sh / len, len);
         let hitPlayer = false;
         for (const q of this.players.values()) {
           if (!q.alive || q.team === n.team) continue;
-          if (S.rayCylinder(n.x, n.y, n.h - q.z, sx / len, sy / len, sh / len, q.x, q.y, S.PLAYER_R + 4, S.bodyHeight(q.stance)) <= len) hitPlayer = true;
+          if (S.rayCylinder(n.x, n.y, n.h - q.z, sx / len, sy / len, sh / len, q.x, q.y, S.PLAYER_R + 4, S.bodyHeight(q.stance)) <= len) {
+            hitPlayer = true;
+            if (n.kind === 'knife' && !n.dead) {
+              n.dead = true;
+              const owner = this.players.get(n.owner) || { id: n.owner, team: n.team, kills: 0, x: n.x, y: n.y };
+              q.spawnProtectUntil = Math.min(q.spawnProtectUntil, now);
+              this.damage(q, 200, owner, 'Throwing Knife', now, false);
+            }
+          }
         }
+        if (n.dead) continue;
         const k = Math.min(t, len) / len;
         n.x += sx * k; n.y += sy * k; n.h += sh * k;
         if (t < len || hitPlayer || now >= n.explodeAt) this.explode(n, now);
         continue;
       }
-      // frag: bounces off walls and the ground
+      // frag, tacticals: bounce off walls and the ground; molotov shatters, semtex sticks
+      const breaks = n.kind === 'molotov', sticks = n.kind === 'semtex';
+      if (sticks) {
+        for (const q of this.players.values()) {
+          if (!q.alive || q.team === n.team || Math.hypot(q.x - n.x, q.y - n.y) > S.PLAYER_R + 6 || n.h > q.z + S.bodyHeight(q.stance) + 4) continue;
+          n.stuck = true; n.stuckTo = q.id; this.events.push({ e: 'stk', i: q.id, b: n.owner }); break;
+        }
+        if (n.stuck) continue;
+      }
       const nx = n.x + n.vx * dt;
-      if (this.blockedAt(nx, n.y, n.h, 4)) n.vx *= -0.45; else n.x = nx;
+      let hit = false;
+      if (this.blockedAt(nx, n.y, n.h, 4)) { n.vx *= -0.45; hit = true; } else n.x = nx;
       const ny = n.y + n.vy * dt;
-      if (this.blockedAt(n.x, ny, n.h, 4)) n.vy *= -0.45; else n.y = ny;
+      if (this.blockedAt(n.x, ny, n.h, 4)) { n.vy *= -0.45; hit = true; } else n.y = ny;
       const nh = n.h + n.vh * dt;
+      if (nh <= 3 || (nh < n.h && this.blockedAt(n.x, n.y, nh, 4))) hit = true;
+      if (hit && breaks) { if (nh <= 3) n.h = 3; this.ignite(n, now); continue; }
+      if (hit && sticks) { n.stuck = true; n.h = Math.max(3, Math.min(n.h, nh > 3 ? n.h : 3)); continue; }
       if (nh <= 3) {
         n.h = 3;
         if (n.vh < 0) n.vh = -n.vh * 0.35;
@@ -741,6 +857,7 @@ class Room {
       this.updateObjectives(now, dt);
       this.updateStrikes(now);
       this.updateDrops(now);
+      this.updateZones(now);
       this.updateParas(now, dt);
       if (this.score.allies >= this.scoreLimit || this.score.axis >= this.scoreLimit || now >= this.endsAt) {
         this.state = 'ended';
@@ -758,11 +875,12 @@ class Room {
     for (const p of this.players.values()) {
       const flags = (p.team === 'axis' ? 1 : 0) | (p.alive ? 2 : 0) | (p.ads ? 4 : 0) | (p.radarUntil > now ? 8 : 0)
         | (p.spawnProtectUntil > now ? 16 : 0) | (p.reloadEnd ? 32 : 0) | (p.stance === 1 ? 64 : 0) | (p.sprintActive ? 128 : 0)
-        | (p.stance === 2 ? 256 : 0) | (p.slide > 0 ? 512 : 0) | (p.air ? 1024 : 0) | (p.para && p.z > 0 ? 2048 : 0);
+        | (p.stance === 2 ? 256 : 0) | (p.slide > 0 ? 512 : 0) | (p.air ? 1024 : 0) | (p.para && p.z > 0 ? 2048 : 0)
+        | (hasPerk(p, 'ghost') ? 4096 : 0) | (hasPerk(p, 'deadsilence') ? 8192 : 0) | (hasPerk(p, 'coldblooded') ? 16384 : 0);
       ps.push({ i: p.id, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10, z: Math.round(p.z), a: +p.ang.toFixed(3), q: +(p.pitch || 0).toFixed(2), h: Math.ceil(p.hp), f: flags, w: this.gun(p).id + ':' + this.gun(p).stats.atts.join(',') });
     }
     const base = {
-      t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, n.kind === 'rg' ? 1 : 0]), sc: [Math.floor(this.score.allies), Math.floor(this.score.axis)],
+      t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, NADE_CODE[n.kind] || 0]), fz: (this.fires || []).map((f) => [f.x | 0, f.y | 0, f.id]), sk: (this.clouds || []).map((c) => [c.x | 0, c.y | 0, c.id, Math.max(0, c.until - now) | 0]), sv: (this.packs || []).map((k) => [k.x | 0, k.y | 0, k.id]), sc: [Math.floor(this.score.allies), Math.floor(this.score.axis)],
       tl: Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, mp: this.map, md: this.mode, ob: this.objState(now), rc: [Math.max(0, (this.recon || {}).allies - now) | 0, Math.max(0, (this.recon || {}).axis - now) | 0], jm: [Math.max(0, (this.jam || {}).allies - now) | 0, Math.max(0, (this.jam || {}).axis - now) | 0], dr: (this.drops || []).map((d) => [d.x | 0, d.y | 0, d.team === 'allies' ? 1 : 2, now >= d.landAt ? 1 : 0, d.id, Math.max(0, d.landAt - now) | 0]), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
     };
     this.events = [];
@@ -771,7 +889,7 @@ class Room {
       const g = this.gun(p);
       base.you = {
         seq: p.lastSeq, x: p.x, y: p.y, alive: p.alive, hp: Math.ceil(p.hp), slot: p.slot, ammo: g.ammo, res: g.reserve,
-        rl: p.reloadEnd ? Math.max(0, p.reloadEnd - now) / g.stats.reload : 0, nd: p.nades, rg: p.rgren || 0, team: p.team,
+        rl: p.reloadEnd ? Math.max(0, p.reloadEnd - now) / g.stats.reload : 0, nd: p.nades, td: p.tacs || 0, lt: (p.loadout || p.pendingLoadout).lethal, tt: (p.loadout || p.pendingLoadout).tactical, pk: (p.loadout || p.pendingLoadout).perks, fl: Math.max(0, (p.flashUntil || 0) - now), sn: Math.max(0, (p.stunUntil || 0) - now), rg: p.rgren || 0, team: p.team,
         ri: p.alive ? 0 : Math.max(0, p.respawnAt - now), kb: p.killedBy, kw: p.killedWith, kx: p.killerPos,
         g: p.guns.map((x) => [x.id, x.stats.atts]),
         sp: p.sp || 0, ks: p.ks || [], ksl: (p.loadout || p.pendingLoadout).streaks,
@@ -810,7 +928,10 @@ function createBot(team, taken) {
     const al = S.WEAPONS[id].allowed.slice().sort(() => Math.random() - 0.5);
     gun = { primary: id, atts: al.slice(0, Math.floor(Math.random() * 3)) };
   }
-  p.pendingLoadout = S.sanitizeLoadout({ ...gun, secondary: SECONDARIES[Math.floor(Math.random() * SECONDARIES.length)], streaks: streakPool.slice(0, 3) });
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const extras = { lethal: pick(Object.keys(S.LETHALS)), tactical: pick(Object.keys(S.TACTICALS)), perks: S.PERK_SLOTS.map(pick) };
+  if (Math.random() < 0.3) Object.assign(gun, pick(S.STARTER_CLASSES).lo);
+  p.pendingLoadout = S.sanitizeLoadout({ secondary: SECONDARIES[Math.floor(Math.random() * SECONDARIES.length)], ...extras, ...gun, streaks: streakPool.slice(0, 3) });
   p.bot = { nextScan: 0, target: null, acquiredAt: 0, aimErr: 0, strafe: 1, strafeUntil: 0, nextPath: 0, lastPos: null, stuckCheck: 0 };
   p.team = team;
   return p;
@@ -850,9 +971,11 @@ function botThink(room, p, now, dt) {
     for (const q of room.players.values()) {
       if (!q.alive || q.team === p.team) continue;
       const d = Math.hypot(q.x - p.x, q.y - p.y);
-      if (d < 1300 && d < bd && S.hasLOS3(p.x, p.y, p.z + S.eyeHeight(p.stance), q.x, q.y, q.z + S.bodyHeight(q.stance) - 6)) { bd = d; best = q; }
+      if (hasPerk(q, 'coldblooded') && d > 550 && q !== b.target) continue;
+      if (d < 1300 && d < bd && S.hasLOS3(p.x, p.y, p.z + S.eyeHeight(p.stance), q.x, q.y, q.z + S.bodyHeight(q.stance) - 6) && !room.smokeBlocks(p.x, p.y, q.x, q.y)) { bd = d; best = q; }
     }
-    if (best && best !== b.target) { b.acquiredAt = now; b.aimErr = (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.5); }
+    if (p.flashUntil > now) best = null;
+    if (best && best !== b.target) { b.acquiredAt = now + (hasPerk(best, 'coldblooded') ? 400 : 0); b.aimErr = (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.5); }
     b.target = best;
   }
   let mx = 0, my = 0, fire = false, ads = false, sprint = false, crouch = false;
@@ -870,7 +993,8 @@ function botThink(room, p, now, dt) {
     b.aimErr *= Math.pow(0.3, dt);
     const want = Math.atan2(dy, dx) + b.aimErr + (Math.random() - 0.5) * 0.04;
     let da = Math.atan2(Math.sin(want - p.ang), Math.cos(want - p.ang));
-    p.ang += S.clamp(da, -7 * dt, 7 * dt);
+    const turn = p.stunUntil > now ? 2 : 7;
+    p.ang += S.clamp(da, -turn * dt, turn * dt);
     const wantPitch = Math.atan2(t.z + S.bodyHeight(t.stance) * 0.75 - p.z - S.eyeHeight(p.stance), d) + b.aimErr * 0.3;
     p.pitch += S.clamp(wantPitch - p.pitch, -4 * dt, 4 * dt);
     ads = d > 300 && st.cls !== 'Shotgun';
@@ -894,7 +1018,8 @@ function botThink(room, p, now, dt) {
       }
     }
     if (b.prone && !goalObj) { crouch = 2; mx = 0; my = 0; } // snipers and gunners go prone at range
-    if (Math.random() < 0.002 * (dt * 60) && p.nades > 0 && d > 220 && d < 550) { const sp = p.pitch; p.pitch = 0.35 + (d - 220) / 1200; room.throwNade(p, now); p.pitch = sp; }
+    if (Math.random() < 0.002 * (dt * 60) && p.nades > 0 && d > 220 && d < 550) { const knife = p.loadout.lethal === 'knife'; const sp = p.pitch; if (!knife) p.pitch = 0.35 + (d - 220) / 1200; if (!knife || (Math.abs(da) < 0.05 && d < 420)) room.throwNade(p, now); p.pitch = sp; }
+    if (Math.random() < 0.0015 * (dt * 60) && p.tacs > 0 && d > 200 && d < 650) { const sp = p.pitch; p.pitch = 0.3 + (d - 200) / 1400; room.throwTactical(p, now); p.pitch = sp; }
     if (!goalObj) b.path = null;
   } else {
     if (g.ammo < st.mag * 0.5) room.startReload(p, now);
@@ -1013,6 +1138,7 @@ function connect(ws) {
       case 'swap': if (player.alive) room.swap(player, now); break;
       case 'melee': room.melee(player, now); break;
       case 'nade': room.throwNade(player, now); break;
+      case 'tac': room.throwTactical(player, now); break;
       case 'rg': room.fireRifleNade(player, now); break;
       case 'ks': if (typeof m.k === 'string') room.useStreak(player, m.k, now); break;
       case 'loadout': player.pendingLoadout = S.sanitizeLoadout(m.loadout); break;

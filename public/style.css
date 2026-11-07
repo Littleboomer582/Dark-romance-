@@ -174,7 +174,9 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
 #tReload { width: 52px; height: 52px; right: calc(max(16px, env(safe-area-inset-right)) + 220px); bottom: 140px; }
 #tSwap { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 82px); bottom: 262px; font-size: 20px; }
 #tNade { width: 52px; height: 52px; right: calc(max(16px, env(safe-area-inset-right)) + 130px); bottom: 220px; }
+#tTac { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 140px); bottom: 282px; font-size: 12px; }
 #tMelee { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 200px); bottom: 210px; font-size: 20px; }
 #tRg { width: 50px; height: 50px; right: calc(max(16px, env(safe-area-inset-right)) + 262px); bottom: 210px; font-size: 13px; }
 @media (pointer: coarse) { #ping { top: max(56px, calc(env(safe-area-inset-top) + 50px)); left: max(166px, calc(env(safe-area-inset-left) + 158px)); } #killfeed { font-size: 11px; max-width: 36vw; } #killfeed div:nth-last-child(n+4) { display: none; } }
 #rotate { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: #111; font-size: 20px; text-align: center; padding: 16px; }
+.lo-classes.starter button { font-weight: 600; }
