@@ -2,6 +2,8 @@
 
 An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter built with Three.js. It runs in any **computer browser** and installs on **Android as an app** (Progressive Web App: home-screen icon, fullscreen, landscape).
 
+> **Also in this repo: [Blocklands](blocklands/README.md)**, an original voxel sandbox game (dig, build, craft, explore) for Android. Install `blocklands/blocklands.apk`.
+
 ## Features
 
 - **8 maps**:

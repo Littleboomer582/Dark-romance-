@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2b2f24">
+<title>Blocklands</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud" hidden>
+  <div id="crosshair"></div>
+  <div id="breakbar"><div></div></div>
+  <div id="hurt"></div>
+  <div id="waterTint"></div>
+  <div id="topbar">
+    <div id="hearts"></div>
+    <div id="clock"></div>
+  </div>
+  <div id="blockname"></div>
+  <div id="hotbar"></div>
+  <div id="debug"></div>
+  <div id="toast"></div>
+
+  <div id="touch">
+    <div id="stick"><div id="knob"></div></div>
+    <button class="tbtn" id="btnPause" aria-label="Pause">II</button>
+    <button class="tbtn" id="btnInv" aria-label="Inventory">&#9638;</button>
+    <button class="tbtn" id="btnFly" aria-label="Fly">FLY</button>
+    <button class="tbtn" id="btnSneak" aria-label="Sneak">&#9660;</button>
+    <button class="tbtn" id="btnJump" aria-label="Jump">&#9650;</button>
+    <button class="tbtn" id="btnBreak" aria-label="Break">&#9874;</button>
+    <button class="tbtn" id="btnPlace" aria-label="Place">&#9632;</button>
+  </div>
+</div>
+
+<div id="menu" class="screen">
+  <div class="panel title-panel">
+    <h1 class="logo">BLOCKLANDS</h1>
+    <p class="tag">Dig. Build. Explore.</p>
+    <button class="big" id="mPlay">Play</button>
+    <button class="big" id="mSettings">Settings</button>
+    <button class="big" id="mHelp">How to play</button>
+  </div>
+</div>
+
+<div id="worlds" class="screen" hidden>
+  <div class="panel">
+    <h2>Your Worlds</h2>
+    <div id="worldList"></div>
+    <div class="row">
+      <button id="wNew">Create New World</button>
+      <button id="wBack" class="secondary">Back</button>
+    </div>
+  </div>
+</div>
+
+<div id="newworld" class="screen" hidden>
+  <div class="panel">
+    <h2>Create New World</h2>
+    <label>World name<input id="nwName" maxlength="32" value="New World"></label>
+    <label>Seed (blank = random)<input id="nwSeed" maxlength="20" placeholder="random"></label>
+    <div class="label">Game mode</div>
+    <div class="seg" id="nwMode">
+      <button data-mode="survival" class="on">Survival</button>
+      <button data-mode="creative">Creative</button>
+    </div>
+    <p class="hint" id="nwModeHint">Mine blocks to collect them, craft, and watch your hearts.</p>
+    <div class="row">
+      <button id="nwCreate">Create World</button>
+      <button id="nwBack" class="secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="pause" class="screen" hidden>
+  <div class="panel">
+    <h2>Game Paused</h2>
+    <button class="big" id="pResume">Back to Game</button>
+    <button class="big" id="pSettings">Settings</button>
+    <button class="big" id="pMode">Switch to Creative</button>
+    <button class="big" id="pQuit">Save &amp; Quit to Title</button>
+  </div>
+</div>
+
+<div id="settings" class="screen" hidden>
+  <div class="panel">
+    <h2>Settings</h2>
+    <label>Render distance: <b id="sRDv"></b> chunks<input type="range" id="sRD" min="2" max="10" step="1"></label>
+    <label>Look sensitivity: <b id="sSensV"></b><input type="range" id="sSens" min="0.2" max="3" step="0.1"></label>
+    <label>Field of view: <b id="sFovV"></b>&deg;<input type="range" id="sFov" min="55" max="100" step="1"></label>
+    <div class="label">Graphics</div>
+    <div class="seg" id="sQuality">
+      <button data-q="low">Fast</button>
+      <button data-q="high">Fancy</button>
+    </div>
+    <div class="checks">
+      <label class="check"><input type="checkbox" id="sAuto"> Auto-jump</label>
+      <label class="check"><input type="checkbox" id="sSound"> Sound</label>
+      <label class="check"><input type="checkbox" id="sFps"> Show FPS</label>
+      <label class="check"><input type="checkbox" id="sTouch"> Touch buttons for break/place</label>
+    </div>
+    <button class="big" id="sBack">Done</button>
+  </div>
+</div>
+
+<div id="help" class="screen" hidden>
+  <div class="panel help">
+    <h2>How to Play</h2>
+    <h3>Phone / tablet</h3>
+    <ul>
+      <li>Left side: drag to walk (a joystick appears under your thumb).</li>
+      <li>Right side: drag to look around.</li>
+      <li><b>Tap</b> to place the selected block. <b>Press and hold</b> to dig.</li>
+      <li>&#9650; jump / swim / fly up, &#9660; sneak / fly down. In Creative, tap FLY or double-tap &#9650;.</li>
+      <li>Tap a hotbar slot to pick a block; &#9638; opens your inventory and crafting.</li>
+    </ul>
+    <h3>Computer</h3>
+    <ul>
+      <li>Click to capture the mouse. WASD move, Space jump, Shift sneak, Ctrl sprint.</li>
+      <li>Left mouse dig, right mouse place, wheel or 1&ndash;9 pick blocks.</li>
+      <li>E inventory, F fly (Creative), Esc pause, F3 debug info.</li>
+    </ul>
+    <h3>Survival</h3>
+    <ul>
+      <li>Blocks you dig go into your inventory. Placing a block uses one.</li>
+      <li>Craft planks, glass, bricks and lamps in the inventory. Coal fuels the furnace recipes.</li>
+      <li>Falls hurt. Your hearts refill slowly. Lamps light up the night and caves.</li>
+    </ul>
+    <button class="big" id="hBack">Got it</button>
+  </div>
+</div>
+
+<div id="inventory" class="screen" hidden>
+  <div class="panel inv">
+    <div class="invhead"><h2 id="invTitle">Inventory</h2><button id="invClose" class="secondary">Done</button></div>
+    <p class="hint">Tap a block to put it in the selected hotbar slot.</p>
+    <div id="invGrid"></div>
+    <div id="craftWrap">
+      <h3>Crafting</h3>
+      <div id="craftList"></div>
+    </div>
+  </div>
+</div>
+
+<div id="dead" class="screen red" hidden>
+  <div class="panel">
+    <h2>You died!</h2>
+    <p class="hint">Your inventory stays with you.</p>
+    <button class="big" id="dRespawn">Respawn</button>
+    <button class="big secondary" id="dQuit">Title Screen</button>
+  </div>
+</div>
+
+<div id="loading" class="screen" hidden><div class="panel"><h2>Generating world&hellip;</h2><div class="bar"><div id="loadBar"></div></div></div></div>
+<div id="error" class="screen" hidden><div class="panel"><h2>Something went wrong</h2><p id="errMsg"></p></div></div>
+
+<script src="js/noise.js"></script>
+<script src="js/blocks.js"></script>
+<script src="js/world.js"></script>
+<script src="js/mesher.js"></script>
+<script src="js/render.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/player.js"></script>
+<script src="js/input.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
