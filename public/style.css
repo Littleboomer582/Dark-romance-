@@ -180,3 +180,6 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
 @media (pointer: coarse) { #ping { top: max(56px, calc(env(safe-area-inset-top) + 50px)); left: max(166px, calc(env(safe-area-inset-left) + 158px)); } #killfeed { font-size: 11px; max-width: 36vw; } #killfeed div:nth-last-child(n+4) { display: none; } }
 #rotate { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: #111; font-size: 20px; text-align: center; padding: 16px; }
 .lo-classes.starter button { font-weight: 600; }
+body.pad-nav button:focus, body.pad-nav select:focus, body.pad-nav input:focus, body.pad-nav .check:focus-within { outline: 3px solid #ffd27a; outline-offset: 2px; box-shadow: 0 0 0 6px rgba(255,210,122,.25); }
+.pad-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.pad-row b { color: #ffe2a4; font-weight: 600; }

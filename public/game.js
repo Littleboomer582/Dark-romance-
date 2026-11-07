@@ -29,8 +29,8 @@ const BIND_LABELS = {
 };
 // keys 5/6/7 fire your 1st/2nd/3rd chosen scorestreak
 const myStreakList = () => (you && you.ksl) || loadout.streaks;
-const ksKey = (id) => keyName(settings.binds['ks' + (myStreakList().indexOf(id) + 1)]);
-const settings = Object.assign({ adsSens: 1, invertY: false, fov: isTouch ? 70 : 75, volume: 0.8, quality: isTouch ? 'low' : 'high' }, loadSaved('fl_settings', {}));
+const ksKey = (id) => (typeof padActive === 'function' && padActive() ? ['D-pad up', 'D-pad left', 'D-pad right'][myStreakList().indexOf(id)] : keyName(settings.binds['ks' + (myStreakList().indexOf(id) + 1)]));
+const settings = Object.assign({ padSens: 1, padDead: 0.15, padLayout: 'default', padAds: 'hold', padAssist: true, padInvert: false, padSouthpaw: false, padAutoSprint: false, padRumble: true, adsSens: 1, invertY: false, fov: isTouch ? 70 : 75, volume: 0.8, quality: isTouch ? 'low' : 'high' }, loadSaved('fl_settings', {}));
 settings.binds = Object.assign({}, DEFAULT_BINDS, settings.binds || {});
 function saveSettings() { save('fl_settings', settings); }
 function keyName(code) {
@@ -380,7 +380,7 @@ function enterGame() {
   showScreen(null);
   $('hud').classList.remove('hidden');
   if (isTouch) $('touch').classList.remove('hidden');
-  else if (!locked) { $('pause').classList.remove('hidden'); requestLock(); }
+  else if (!locked && !padActive()) { $('pause').classList.remove('hidden'); requestLock(); }
 }
 function enterLobby() {
   if (document.pointerLockElement) document.exitPointerLock();
@@ -653,6 +653,7 @@ function handleEvent(e, now) {
   switch (e.e) {
     case 's': {
       const isMe = e.i === myId;
+      if (isMe && e.p === 0) rumble(70, 0.2, 0.55);
       const dx = Math.cos(e.a) * Math.cos(e.q), dy = Math.sin(e.a) * Math.cos(e.q), dh = Math.sin(e.q);
       let ox = e.x, oy = e.y, oh = e.z;
       const end = new THREE.Vector3(ox + dx * e.d, oh + dh * e.d, oy + dy * e.d);
@@ -686,7 +687,7 @@ function handleEvent(e, now) {
     case 'h':
       if (e.b === myId && e.i !== myId) { hitMarker = now; hitKill = false; tone(e.hs ? 2400 : 1800, 0.05, 0.08, 'triangle'); }
       if (e.i === myId) {
-        hurtFlash = now; shake = Math.max(shake, 3);
+        hurtFlash = now; shake = Math.max(shake, 3); rumble(160, 0.75, 0.4);
         const src = snaps.length ? snaps[snaps.length - 1].p.get(e.b) : null;
         if (src && e.b !== myId) hurtDirs.push({ x: src.x, y: src.y, t: now });
       }
@@ -709,6 +710,7 @@ function handleEvent(e, now) {
         break;
       }
       spawnExplosion(e.x, e.z || 5, e.y, now);
+      if (volAt(e.x, e.y) > 0.6) rumble(260, volAt(e.x, e.y), 0.6 * volAt(e.x, e.y));
       noise(500, 0.9, volAt(e.x, e.y) * 0.9);
       shake = Math.max(shake, 14 * volAt(e.x, e.y));
       break;
@@ -1771,7 +1773,7 @@ function requestLock() { if (!isTouch && canvas.requestPointerLock) { try { cons
 document.addEventListener('pointerlockerror', () => { if (joined && inGame()) $('pause').classList.remove('hidden'); });
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === canvas;
-  if (!locked && joined && !isTouch && $('loadoutScreen').classList.contains('hidden') && $('lobbyScreen').classList.contains('hidden')) $('pause').classList.remove('hidden');
+  if (!locked && joined && !isTouch && !padActive() && $('loadoutScreen').classList.contains('hidden') && $('lobbyScreen').classList.contains('hidden')) $('pause').classList.remove('hidden');
   if (locked) $('pause').classList.add('hidden');
   mouseDown = mouseRight = false;
 });
@@ -1943,7 +1945,7 @@ function toggleLoadout(force) {
   $('leave').classList.toggle('hidden', inLobby);
   $('loadoutTag').textContent = inLobby ? 'Your loadout for the next match.' : 'Changes apply on your next respawn.';
   if (show) { $('pause').classList.add('hidden'); gameLoadout.render(); if (document.pointerLockElement) document.exitPointerLock(); }
-  else if (joined && !isTouch && !inLobby) requestLock();
+  else if (joined && !isTouch && !inLobby && !padActive()) requestLock();
   fireBtns.clear(); mouseDown = false;
 }
 $('loadoutSave').addEventListener('click', () => {
@@ -1997,6 +1999,7 @@ function openSettings() {
   if (document.pointerLockElement) document.exitPointerLock();
   $('settingsScreen').classList.remove('hidden');
   renderBinds();
+  updatePadStatus();
   $('adsSens').value = settings.adsSens; $('adsSensVal').textContent = (+settings.adsSens).toFixed(2);
   $('invertY').checked = !!settings.invertY;
   $('fovSet').value = settings.fov; $('fovVal').textContent = settings.fov;
@@ -2008,7 +2011,7 @@ function closeSettings() {
   $('settingsScreen').classList.add('hidden');
   if (!joined) return;
   if (!$('lobbyScreen').classList.contains('hidden')) return;
-  if (!isTouch) { $('pause').classList.remove('hidden'); }
+  if (!isTouch && !padActive()) { $('pause').classList.remove('hidden'); }
 }
 $('settingsBack').addEventListener('click', closeSettings);
 for (const b of document.querySelectorAll('#settingsTabs button')) b.addEventListener('click', () => {
@@ -2039,6 +2042,7 @@ $('fovSet').addEventListener('input', () => { settings.fov = +$('fovSet').value;
 $('volSet').addEventListener('input', () => { settings.volume = +$('volSet').value; $('volVal').textContent = Math.round(settings.volume * 100) + '%'; if (master) master.gain.value = settings.volume; saveSettings(); });
 $('quality').addEventListener('change', () => { settings.quality = $('quality').value; saveSettings(); $('qualityNote').textContent = 'Restart the game (reload the page or reopen the app) to apply.'; });
 function updateHelp() {
+  if (globalThis.__padOn) { $('controlsHelp').innerHTML = 'Controller: left stick move &middot; right stick look &middot; RT fire &middot; LT aim &middot; A jump &middot; B crouch (hold: prone) &middot; L3 sprint &middot; X reload &middot; Y swap &middot; RB lethal &middot; LB tactical &middot; R3 melee &middot; D-pad scorestreaks &middot; Start pause &middot; full list and options in Settings &rarr; Controller'; return; }
   if (isTouch) return;
   const k = (a) => keyName(settings.binds[a]);
   $('controlsHelp').innerHTML = `Click to lock the mouse &middot; ${k('forward')}${k('left')}${k('back')}${k('right')} move &middot; Left click fire &middot; Right click aim &middot; ${k('sprint')} sprint &middot; ${k('jump')} jump &middot; ${k('crouch')} crouch / slide (hold: prone) &middot; ${k('prone')} prone &middot; ${k('reload')} reload &middot; ${k('swap')} swap &middot; ${k('grenade')} lethal &middot; ${k('tactical')} tactical &middot; ${k('melee')} melee &middot; ${k('ks1')}/${k('ks2')}/${k('ks3')} scorestreaks &middot; ${k('scores')} scores &middot; change keys in Settings`;
@@ -2193,11 +2197,203 @@ function interpPlayers(now) {
   return out;
 }
 
-// aim assist (touch): find an enemy close to the crosshair
+// ============================================================ controller (Gamepad API)
+// Standard mapping: 0 A, 1 B, 2 X, 3 Y, 4 LB, 5 RB, 6 LT, 7 RT, 8 Back/View, 9 Start/Menu, 10 L3, 11 R3, 12-15 D-pad up/down/left/right
+const PAD_LAYOUTS = {
+  default: { fire: 7, ads: 6, lethal: 5, tactical: 4, crouch: 1, melee: 11 },
+  tactical: { fire: 7, ads: 6, lethal: 5, tactical: 4, crouch: 11, melee: 1 },
+  flipped: { fire: 5, ads: 4, lethal: 7, tactical: 6, crouch: 1, melee: 11 },
+};
+const PAD_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT', 'View / Back', 'Menu / Start', 'L3 (press left stick)', 'R3 (press right stick)', 'D-pad up', 'D-pad down', 'D-pad left', 'D-pad right'];
+const PAD = { index: null, using: false, prev: [], sprint: false, adsLatch: false, navAt: 0, navDir: '', state: null };
+function currentPad() {
+  const list = navigator.getGamepads ? navigator.getGamepads() : [];
+  if (PAD.index != null && list[PAD.index]) return list[PAD.index];
+  for (const gp of list) if (gp && gp.connected) { PAD.index = gp.index; return gp; }
+  return null;
+}
+const padActive = () => PAD.using && !!currentPad();
+addEventListener('gamepadconnected', (e) => {
+  PAD.index = e.gamepad.index;
+  if (joined) notice('Controller connected', true, performance.now());
+  updatePadStatus(); updateHelp();
+});
+addEventListener('gamepaddisconnected', (e) => {
+  if (PAD.index === e.gamepad.index) { PAD.index = null; PAD.using = globalThis.__padOn = false; document.body.classList.remove('pad-nav'); }
+  if (joined) notice('Controller disconnected', false, performance.now());
+  updatePadStatus(); updateHelp();
+});
+// mouse / keyboard take back over from the controller
+addEventListener('mousemove', (e) => { if (PAD.using && (Math.abs(e.movementX) + Math.abs(e.movementY) > 6)) { PAD.using = globalThis.__padOn = false; document.body.classList.remove('pad-nav'); updateHelp(); } });
+addEventListener('keydown', () => { if (PAD.using) { PAD.using = globalThis.__padOn = false; document.body.classList.remove('pad-nav'); updateHelp(); } });
+function rumble(ms, strong, weak) {
+  if (!settings.padRumble || !padActive()) return;
+  const gp = currentPad(), act = gp && gp.vibrationActuator;
+  if (act && act.playEffect) act.playEffect('dual-rumble', { startDelay: 0, duration: ms, strongMagnitude: strong, weakMagnitude: weak }).catch(() => {});
+}
+function deadzone(x, y, dz) {
+  const m = Math.hypot(x, y);
+  if (m < dz) return [0, 0, 0];
+  const k = Math.min(1, (m - dz) / (1 - dz)) / m;
+  return [x * k, y * k, Math.min(1, (m - dz) / (1 - dz))];
+}
+// ---- menu navigation: D-pad / left stick moves focus, A selects, B goes back
+const NAV_SCREENS = ['settingsScreen', 'loadoutScreen', 'pause', 'scoreboard', 'lobbyScreen', 'armory', 'createScreen', 'browseScreen', 'menu'];
+const NAV_BACK = { settingsScreen: 'settingsBack', loadoutScreen: 'loadoutSave', pause: 'resume', armory: 'armoryBack', createScreen: 'createBack', browseScreen: 'browseBack' };
+function navRoot() { for (const id of NAV_SCREENS) { const el = $(id); if (el && !el.classList.contains('hidden')) return el; } return null; }
+function navList(root) { return [...root.querySelectorAll('button, select, input')].filter((e) => !e.disabled && e.offsetParent !== null && e.getClientRects().length); }
+function navFocus(el) { if (!el) return; el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+function navMove(dx, dy) {
+  const root = navRoot(); if (!root) return;
+  const list = navList(root); if (!list.length) return;
+  const cur = document.activeElement;
+  if (!list.includes(cur)) { navFocus(list[0]); return; }
+  if (dx && cur.type === 'range') { cur.value = +cur.value + dx * (+cur.step || 1) * 2; cur.dispatchEvent(new Event('input', { bubbles: true })); cur.dispatchEvent(new Event('change', { bubbles: true })); return; }
+  if (dx && cur.tagName === 'SELECT') { cur.selectedIndex = S.clamp(cur.selectedIndex + dx, 0, cur.options.length - 1); cur.dispatchEvent(new Event('change', { bubbles: true })); return; }
+  const r = cur.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  let best = null, bs = Infinity;
+  for (const e of list) {
+    if (e === cur) continue;
+    const q = e.getBoundingClientRect(), vx = q.left + q.width / 2 - cx, vy = q.top + q.height / 2 - cy;
+    const along = vx * dx + vy * dy;
+    if (along <= 4) continue;
+    const score = along + Math.abs(vx * dy - vy * dx) * 2.5;
+    if (score < bs) { bs = score; best = e; }
+  }
+  navFocus(best);
+}
+function navPress() {
+  const root = navRoot(); if (!root) return;
+  const cur = document.activeElement;
+  if (!root.contains(cur) || cur === document.body) { navFocus(navList(root)[0]); return; }
+  if (cur.tagName === 'BUTTON' || cur.type === 'checkbox') cur.click();
+  else if (cur.tagName === 'INPUT' && cur.type !== 'range') cur.select && cur.select();
+}
+function navBack() {
+  const root = navRoot(); if (!root) return;
+  if (root.id === 'scoreboard') { toggleScores(false); return; }
+  if (root.id === 'loadoutScreen' && !$('lobbyScreen').classList.contains('hidden')) { $('loadoutSave').click(); return; }
+  const b = NAV_BACK[root.id]; if (b && $(b)) $(b).click();
+  setTimeout(() => { const r2 = navRoot(); if (r2 && !r2.contains(document.activeElement)) navFocus(navList(r2)[0]); }, 50);
+}
+function navTab(dir) {
+  const tabs = [...document.querySelectorAll('#settingsTabs button')];
+  if ($('settingsScreen').classList.contains('hidden') || !tabs.length) return;
+  const i = tabs.findIndex((b) => b.classList.contains('on'));
+  tabs[(i + dir + tabs.length) % tabs.length].click();
+}
+// Called every frame: game input is returned, menu input is acted on directly.
+function pollPad(now, dt) {
+  PAD.state = null;
+  const gp = currentPad();
+  if (!gp) return;
+  const L = PAD_LAYOUTS[settings.padLayout] || PAD_LAYOUTS.default;
+  const val = (i) => (gp.buttons[i] ? gp.buttons[i].value : 0);
+  const down = (i) => (gp.buttons[i] ? gp.buttons[i].pressed || gp.buttons[i].value > 0.35 : false);
+  const btns = gp.buttons.map((_, i) => down(i));
+  const pressed = (i) => btns[i] && !PAD.prev[i], released = (i) => !btns[i] && PAD.prev[i];
+  const dz = settings.padDead;
+  let [lx, ly] = [gp.axes[0] || 0, gp.axes[1] || 0], [rx, ry] = [gp.axes[2] || 0, gp.axes[3] || 0];
+  if (settings.padSouthpaw) [lx, ly, rx, ry] = [rx, ry, lx, ly];
+  const move = deadzone(lx, ly, dz), look = deadzone(rx, ry, dz);
+  if (btns.some(Boolean) || move[2] > 0 || look[2] > 0) {
+    if (!PAD.using) { PAD.using = globalThis.__padOn = true; updateHelp(); }
+    initAudio();
+  }
+  if (!PAD.using) { PAD.prev = btns; return; }
+  if (inGame() && you) {
+    document.body.classList.remove('pad-nav');
+    const st = { fwd: -move[1], strafe: move[0], fire: false, ads: false, sprint: false };
+    // look: response curve for fine aim, scaled by aiming, stun and aim-assist slowdown
+    if (look[2] > 0) {
+      const curve = Math.pow(look[2], 1.8) / look[2];
+      const slow = settings.padAssist && assistTarget ? 0.6 : 1;
+      const speed = 3.2 * settings.padSens * lookScale() * slow * dt;
+      yaw += look[0] * curve * speed;
+      pitch = S.clamp(pitch - look[1] * curve * speed * 0.75 * (settings.padInvert ? -1 : 1), -1.45, 1.45);
+    }
+    st.fire = val(L.fire) > 0.3;
+    if (settings.padAds === 'toggle') { if (pressed(L.ads)) PAD.adsLatch = !PAD.adsLatch; st.ads = PAD.adsLatch; } else st.ads = val(L.ads) > 0.3;
+    // sprint: click L3 (stays on until you stop or aim), or auto-sprint
+    if (pressed(10)) PAD.sprint = !PAD.sprint;
+    if (move[2] < 0.3 || st.ads || move[1] > -0.3) PAD.sprint = false;
+    st.sprint = PAD.sprint || (settings.padAutoSprint && move[1] < -0.92 && move[2] > 0.92);
+    if (st.sprint) PAD.adsLatch = false;
+    if (pressed(0)) pressJump();
+    if (pressed(L.crouch)) { crouchDownAt = performance.now(); if (proneOn) { proneOn = false; crouchOn = true; } else crouchOn = !crouchOn; PAD.sprint = false; }
+    if (released(L.crouch)) crouchDownAt = 0;
+    if (pressed(2)) send({ t: 'reload' });
+    if (pressed(3)) send({ t: 'swap' });
+    if (pressed(L.melee)) send({ t: 'melee' });
+    if (pressed(L.lethal)) send({ t: 'nade' });
+    if (pressed(L.tactical)) send({ t: 'tac' });
+    if (pressed(12)) useStreak(myStreakList()[0]);
+    if (pressed(14)) useStreak(myStreakList()[1]);
+    if (pressed(15)) useStreak(myStreakList()[2]);
+    if (pressed(13)) send({ t: 'rg' });
+    if (pressed(8)) toggleScores(true);
+    if (pressed(9)) { // pause
+      PAD.prev = btns;
+      $('pause').classList.remove('hidden');
+      if (document.pointerLockElement) document.exitPointerLock();
+      document.body.classList.add('pad-nav'); navFocus($('resume'));
+      return;
+    }
+    PAD.state = st;
+  } else {
+    // menus
+    if (released(8)) toggleScores(false);
+    if (!$('scoreboard').classList.contains('hidden') && joined && $('pause').classList.contains('hidden') && $('loadoutScreen').classList.contains('hidden')) { PAD.prev = btns; return; }
+    let dir = '';
+    if (btns[12] || move[1] < -0.6) dir = 'u'; else if (btns[13] || move[1] > 0.6) dir = 'd';
+    else if (btns[14] || move[0] < -0.6) dir = 'l'; else if (btns[15] || move[0] > 0.6) dir = 'r';
+    if (dir && (dir !== PAD.navDir || now >= PAD.navAt)) {
+      document.body.classList.add('pad-nav');
+      PAD.navAt = now + (dir !== PAD.navDir ? 380 : 110);
+      navMove(dir === 'l' ? -1 : dir === 'r' ? 1 : 0, dir === 'u' ? -1 : dir === 'd' ? 1 : 0);
+    }
+    PAD.navDir = dir;
+    if (pressed(0)) { document.body.classList.add('pad-nav'); navPress(); }
+    if (pressed(1)) navBack();
+    if (pressed(4)) navTab(-1);
+    if (pressed(5)) navTab(1);
+    if (pressed(9) && !$('pause').classList.contains('hidden')) $('resume').click();
+    if (look[2] > 0) { const r = navRoot(); const panel = r && r.querySelector('.panel'); if (panel) panel.scrollTop += look[1] * 900 * dt; }
+  }
+  PAD.prev = btns;
+}
+function padMapHtml() {
+  const L = PAD_LAYOUTS[settings.padLayout] || PAD_LAYOUTS.default;
+  const rows = [
+    ['Move / look', settings.padSouthpaw ? 'Right stick / left stick' : 'Left stick / right stick'],
+    ['Fire', PAD_NAMES[L.fire]], ['Aim down sights', PAD_NAMES[L.ads]], ['Jump (stand up from crouch / prone)', 'A'],
+    ['Crouch / slide (hold: prone)', PAD_NAMES[L.crouch]], ['Sprint', 'L3 (press left stick)' + (settings.padAutoSprint ? ' or push the stick fully forward' : '')],
+    ['Reload', 'X'], ['Switch weapon', 'Y'], ['Melee', PAD_NAMES[L.melee]], ['Lethal', PAD_NAMES[L.lethal]], ['Tactical', PAD_NAMES[L.tactical]],
+    ['Scorestreaks 1 / 2 / 3', 'D-pad up / left / right'], ['Rifle grenade', 'D-pad down'], ['Scoreboard', 'View / Back'], ['Pause menu', 'Menu / Start'],
+    ['Menus', 'D-pad or left stick to move, A select, B back, LB / RB change tabs, right stick scrolls'],
+  ];
+  return rows.map(([a, b]) => `<div class="pad-row"><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('');
+}
+function updatePadStatus() {
+  const gp = currentPad();
+  $('padStatus').textContent = gp ? 'Controller connected: ' + gp.id.replace(/\s*\(.*\)\s*/g, ' ').trim() : 'No controller detected. Connect one by USB or Bluetooth and press any button.';
+  $('padMap').innerHTML = padMapHtml();
+}
+function initPadSettings() {
+  const bindRange = (id, key, fmt) => { const el = $(id); el.value = settings[key]; $(id + 'Val').textContent = fmt(settings[key]); el.addEventListener('input', () => { settings[key] = +el.value; $(id + 'Val').textContent = fmt(settings[key]); saveSettings(); }); };
+  bindRange('padSens', 'padSens', (v) => (+v).toFixed(2));
+  bindRange('padDead', 'padDead', (v) => Math.round(v * 100) + '%');
+  for (const [id, key] of [['padLayout', 'padLayout'], ['padAds', 'padAds']]) { $(id).value = settings[key]; $(id).addEventListener('change', () => { settings[key] = $(id).value; PAD.adsLatch = false; saveSettings(); updatePadStatus(); }); }
+  for (const [id, key] of [['padAssist', 'padAssist'], ['padInvert', 'padInvert'], ['padSouthpaw', 'padSouthpaw'], ['padAutoSprint', 'padAutoSprint'], ['padRumble', 'padRumble']]) { $(id).checked = !!settings[key]; $(id).addEventListener('change', () => { settings[key] = $(id).checked; saveSettings(); updatePadStatus(); }); }
+  updatePadStatus();
+}
+initPadSettings();
+
+// aim assist (touch and controller): find an enemy close to the crosshair
 let assistTarget = null;
 function findAssist(players) {
   assistTarget = null;
-  if (!isTouch || !you || !you.alive) return;
+  if (!(isTouch || (padActive() && settings.padAssist)) || !you || !you.alive) return;
   const eye = myEye();
   let best = 0.09 + adsT * 0.06;
   for (const [id, p] of players) {
@@ -2223,6 +2419,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   soundsThisFrame = 0;
+  pollPad(now, dt);
   $('rotate').classList.toggle('hidden', !(joined && isTouch && H > W));
 
   updateSnow(dt, now);
@@ -2252,6 +2449,15 @@ function frame(now) {
       ads = adsMode === 'toggle' ? adsLatched : mouseRight;
       sprint = !!keys[K.sprint] && fwd > 0;
       fire = mouseDown && locked;
+    }
+    const ps = PAD.state;
+    if (ps) {
+      fwd = S.clamp(fwd + ps.fwd, -1, 1); strafe = S.clamp(strafe + ps.strafe, -1, 1);
+      fire = fire || ps.fire; ads = ads || ps.ads; sprint = sprint || (ps.sprint && fwd > 0);
+      if (settings.padAssist && assistTarget && (fire || ads)) { // gentle pull towards a target near the crosshair
+        const r = Math.min(1, (ads ? 4 : 1.5) * dt);
+        yaw += assistTarget.dyaw * r; pitch += assistTarget.dp * r;
+      }
     }
     // hold crouch to go prone
     if (crouchDownAt && performance.now() - crouchDownAt > 420 && !pred.slide) { proneOn = true; crouchOn = false; crouchDownAt = 0; }

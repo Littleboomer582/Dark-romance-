@@ -163,6 +163,7 @@
         <button data-tab="controls" class="on">Controls</button>
         <button data-tab="mouse">Mouse &amp; Aim</button>
         <button data-tab="video">Display &amp; Sound</button>
+        <button data-tab="pad">Controller</button>
       </div>
       <div class="tab" id="tab-controls">
         <p class="tag">Click an action, then press the key you want. Esc cancels. Picking a key that is already used swaps the two.</p>
@@ -200,6 +201,32 @@
           </label>
         </div>
         <p class="lo-desc" id="qualityNote"></p>
+      </div>
+      <div class="tab hidden" id="tab-pad">
+        <p class="tag" id="padStatus"></p>
+        <div class="row">
+          <label>Look sensitivity <span id="padSensVal"></span>
+            <input id="padSens" type="range" min="0.3" max="3" step="0.05" value="1">
+          </label>
+          <label>Stick deadzone <span id="padDeadVal"></span>
+            <input id="padDead" type="range" min="0.03" max="0.4" step="0.01" value="0.15">
+          </label>
+        </div>
+        <div class="row">
+          <label>Button layout
+            <select id="padLayout"><option value="default">Default</option><option value="tactical">Tactical (crouch on R3, melee on B)</option><option value="flipped">Flipped (fire and aim on the bumpers)</option></select>
+          </label>
+          <label>Aim down sights
+            <select id="padAds"><option value="hold">Hold the aim trigger</option><option value="toggle">Toggle: press the aim trigger</option></select>
+          </label>
+        </div>
+        <label class="check"><input type="checkbox" id="padAssist"> Aim assist (slows and gently pulls your aim near enemies)</label>
+        <label class="check"><input type="checkbox" id="padInvert"> Invert look up / down</label>
+        <label class="check"><input type="checkbox" id="padSouthpaw"> Swap sticks (left-handed: look on the left stick)</label>
+        <label class="check"><input type="checkbox" id="padAutoSprint"> Auto-sprint (push the move stick all the way forward)</label>
+        <label class="check"><input type="checkbox" id="padRumble"> Vibration</label>
+        <div class="lo-label">Buttons</div>
+        <div id="padMap" class="bind-list"></div>
       </div>
       <button id="settingsBack" class="big">DONE</button>
     </div>

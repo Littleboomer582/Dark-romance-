@@ -188,6 +188,34 @@ If the app is hosted somewhere other than the game server, point it at the serve
 | Scorestreaks | 5 / 6 / 7 | tap the button that appears |
 | Scores / Loadout | Tab / L | ☰ / ⚙ |
 
+### Controller
+
+Xbox, PlayStation and other standard controllers work in the browser and in the Android app, over USB or Bluetooth. Press any button to switch to the controller.
+
+| Action | Button (default layout) |
+|---|---|
+| Move / look | Left stick / right stick |
+| Fire / aim down sights | RT / LT |
+| Jump / crouch (slide while sprinting, hold for prone) | A / B |
+| Sprint | L3 (or turn on auto-sprint) |
+| Reload / switch weapon / melee | X / Y / R3 |
+| Lethal / tactical | RB / LB |
+| Scorestreaks / rifle grenade | D-pad up, left, right / D-pad down |
+| Scoreboard / pause | View (Back) / Menu (Start) |
+
+All menus work with the controller: the D-pad or left stick moves, A selects, B goes back, LB / RB change settings tabs, and the right stick scrolls.
+
+**Accessibility options** (Settings → Controller):
+- Look sensitivity and stick deadzone.
+- Three button layouts:
+  - Default.
+  - Tactical: crouch on R3, melee on B.
+  - Flipped: fire and aim on the bumpers.
+- Hold or toggle aiming.
+- Aim assist (on or off).
+- Invert look, swapped sticks for left-handed players, and auto-sprint.
+- Vibration on or off.
+
 Every key can be changed in **Settings**, which is on the main menu, the pause screen and the loadout screen.
 
 ## Project layout
