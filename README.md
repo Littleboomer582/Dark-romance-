@@ -46,6 +46,18 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - **AR-15 family** (M4A1, M16A1, M16A4, SCAR-H, ACR): separate upper and lower receivers, a flared magazine well, pivot and takedown pins, bolt catch, selector, ejection port with dust cover, forward assist, brass deflector, a rear T-handle that you pull on reloads, quad rails or a ribbed handguard, a triangular front sight base, a slotted birdcage, a buffer tube with castle nut, and collapsible or fixed A2 stocks.
   - **AK family** (AK-47, AK-74u, RPK, Galil, Dragunov SVD, AN-94): a stamped receiver with a curved dust cover, rivets, a long selector lever, a charging handle on the bolt carrier, upper and lower wood handguards, a gas block, a hooded front sight and a rear sight leaf.
   - Modern guns use anodized aluminium and textured (stippled) polymer, and magazines show the top round.
+  - **Every modern gun has its own real side profile and signature parts.** A few examples:
+    - **HK guns** (MP5K, PSG1): the stamped receiver, cocking tube and drum rear sight.
+    - **Uzi:** the ribbed top cover and grip safety.
+    - **Bullpups:** the hand guards of the AUG, TAR-21 and F2000; the AUG's built-in scope housing; and the FAMAS carry-handle sights and folded bipod.
+    - **P90:** the thumbhole body and a see-through top magazine with the rounds inside.
+    - **Rifles:** the FAL's vented handguard and left-side charging handle; the one-piece wood stock and op-rod of the M14.
+    - **Snipers:** the L96 thumbhole stock, the WA2000 open frame, and the Barrett's lightening cuts and carry handle.
+    - **Shotguns:** the AA-12 carry handle, the KSG twin magazine tubes, the SPAS-12 perforated heat shield, and the M1887's lever and exposed hammer.
+  - **Pistols** have a separate slide and frame:
+    - Bevelled or rounded slide noses and cocking serrations, with an ejection port and extractor.
+    - Accessory rails, round, square or hooked trigger guards, beavertails, and grip panels with screws.
+    - Slide-stop, safety and magazine-release controls, spur or ring hammers, and three-dot sights.
 - **Working mechanisms**:
   - Bolt-actions are cycled by your hand after each shot, and pistol slides recoil.
   - The Trench Gun pumps, the revolver cylinder swings out, and the double-barrel breaks open.
