@@ -447,7 +447,7 @@ function onState(m) {
   if (you) {
     pending = pending.filter((i) => i[0] > you.seq);
     const mv = you.mv || [0, 0, 0, 0, 0, 0, 0, 0, 0];
-    const ns = { x: you.x, y: you.y, z: mv[0], vz: mv[1], slide: mv[2], sdx: mv[3], sdy: mv[4], slideCd: mv[5], pc: !!mv[6], ps: !!mv[7], pj: !!mv[8], stance: pred.stance, air: false };
+    const ns = { x: you.x, y: you.y, z: mv[0], vz: mv[1], slide: mv[2], sdx: mv[3], sdy: mv[4], slideCd: mv[5], pc: !!mv[6], ps: !!mv[7], pj: !!mv[8], stam: mv[9] == null ? S.SPRINT_MAX : mv[9], winded: !!mv[10], stance: pred.stance, air: false };
     if (you.alive) {
       const st = myStats();
       for (const i of pending) S.stepMove(ns, i[2], i[3], i[4], i[1], st);
@@ -482,6 +482,17 @@ function objNotice(e, now) {
     else if (e.k === 'return') { text = mine ? 'Your flag was returned' : 'Enemy flag returned'; good = mine; }
     else if (e.k === 'cap') { text = mine ? 'The enemy captured your flag!' : 'Your team captured the flag!'; good = !mine; }
   } else if (currentMode === 'hq' && e.k === 'move') text = 'The HQ has moved';
+  else if (currentMode === 'kc') {
+    if (e.i !== myId) return; // only your own pick-ups
+    text = e.k === 'conf' ? 'Kill confirmed' : 'Kill denied'; good = true;
+  } else if (currentMode === 'sd' || currentMode === 'dem') {
+    const L = 'AB'[e.i] || '';
+    if (e.k === 'plant') { text = mine ? `Bomb planted at ${L}` : `The enemy planted the bomb at ${L}! Defuse it!`; good = mine; tone(1200, 0.08, 0.06, 'square'); }
+    else if (e.k === 'defuse') { text = mine ? `Bomb defused at ${L}` : `The enemy defused the bomb at ${L}`; good = mine; }
+    else if (e.k === 'boom') { text = mine ? `Target ${L} destroyed` : `Site ${L} was destroyed`; good = mine; }
+    else if (e.k === 'round') { text = (mine ? 'ROUND WON' : 'ROUND LOST') + '\n' + (e.w || ''); good = mine; }
+    else if (e.k === 'start') { text = `Round ${e.i}\n` + (mine ? 'Attack: plant the bomb at A or B' : 'Defend sites A and B'); good = null; }
+  }
   if (!text) return;
   killfeed.push({ notice: text, good, t: now });
   while (killfeed.length > 5) killfeed.shift();
@@ -1300,7 +1311,7 @@ function ringMesh(r, color, opacity) {
 function buildObjectives(mapId, mode) {
   if (objGroup) { scene.remove(objGroup); disposeGroup(objGroup); }
   objMapId = mapId; objModeId = mode;
-  objView.dom = []; objView.flags = []; objView.hq = null;
+  objView.dom = []; objView.flags = []; objView.hq = null; objView.sites = []; objView.tags = new Map(); objView.nextBeep = 0;
   const map = S.MAPS[mapId];
   const g = new THREE.Group(); objGroup = g;
   if (mode === 'dom') {
@@ -1324,6 +1335,22 @@ function buildObjectives(mapId, mode) {
     const ring = ringMesh(140, TEAMHEX[0], 0.85); g.add(ring);
     const mk = markerSprite('HQ', '#d8d3c0'); g.add(mk);
     objView.hq = { zone, ring, mk, holder: -1, idx: -1 };
+  } else if (mode === 'sd' || mode === 'dem') {
+    [map.dom[0], map.dom[2]].forEach((pt, i) => {
+      const ring = ringMesh(75, 0xf0c040, 0.6); ring.position.x = pt.x; ring.position.z = pt.y; g.add(ring);
+      const crate = new THREE.Group(); crate.position.set(pt.x, 0, pt.y);
+      const cm = new THREE.MeshStandardMaterial({ color: 0x4d5536, roughness: 0.85 });
+      crate.add(box(34, 24, 26, cm, 0, 12, 0)); crate.add(box(36, 3, 28, M.dark, 0, 24, 0));
+      for (const z of [-13.2, 13.2]) crate.add(box(20, 8, 0.4, new THREE.MeshBasicMaterial({ color: 0xd8c070 }), 0, 13, z)); // stencil plate
+      g.add(crate);
+      const bomb = new THREE.Group(); bomb.position.set(pt.x + 22, 0, pt.y);
+      bomb.add(box(14, 8, 10, new THREE.MeshStandardMaterial({ color: 0x3a3a34, roughness: 0.6, metalness: 0.4 }), 0, 4, 0));
+      for (const z of [-3, 0, 3]) { const c2 = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 12, 8), new THREE.MeshStandardMaterial({ color: 0xb06a3c })); c2.rotation.z = Math.PI / 2; c2.position.set(0, 9, z); bomb.add(c2); }
+      const led = new THREE.Mesh(new THREE.SphereGeometry(1.4, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2020 })); led.position.set(0, 11, 0); bomb.add(led);
+      bomb.visible = false; g.add(bomb);
+      const mk = markerSprite('AB'[i], '#f0c040'); mk.position.set(pt.x, 150, pt.y); g.add(mk);
+      objView.sites.push({ ring, crate, bomb, led, mk, st: -1, x: pt.x, y: pt.y });
+    });
   }
   scene.add(g);
 }
@@ -1358,6 +1385,40 @@ function updateObjectives3D(now, players) {
       setMarker(v.mk, 'HQ', h === 1 ? '#4f8fe0' : h === 2 ? '#d9483b' : h === 3 ? '#f0c040' : '#d8d3c0');
     }
     v.zone.material.opacity = 0.14 + Math.sin(now / 300) * 0.05;
+  }
+  if ((objModeId === 'sd' || objModeId === 'dem') && ob && ob.s) {
+    ob.s.forEach(([st, , , ms], i) => {
+      const v = objView.sites[i]; if (!v) return;
+      if (v.st !== st) {
+        v.st = st;
+        v.bomb.visible = st === 1;
+        v.crate.rotation.z = st === 2 ? 0.5 : 0; v.crate.scale.y = st === 2 ? 0.45 : 1;
+        v.ring.material.color.setHex(st === 2 ? 0x555555 : st === 1 ? 0xff3020 : 0xf0c040);
+        setMarker(v.mk, st === 2 ? '✕' : 'AB'[i], st === 1 ? '#ff3020' : st === 2 ? '#777' : st === 3 ? '#7fd36a' : '#f0c040');
+        if (st === 2) { const p3 = new THREE.Vector3(v.x, 10, v.y); burst(p3, 'smoke', 12, 80); }
+      }
+      if (st === 1) {
+        const rate = ms < 8000 ? 250 : ms < 15000 ? 500 : 1000; // the bomb ticks faster near the end
+        v.led.visible = Math.floor(now / (rate / 2)) % 2 === 0;
+        if (now >= (v.beepAt || 0)) { v.beepAt = now + rate; tone(1800, 0.06, 0.06 * volAt(v.x, v.y), 'square'); }
+      }
+    });
+  }
+  if (objModeId === 'kc' && ob && ob.tg) {
+    const seen = new Set();
+    for (const [x, y, tm, id] of ob.tg) {
+      seen.add(id);
+      let m = objView.tags.get(id);
+      if (!m) {
+        m = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({ color: tm === 1 ? 0x4f8fe0 : 0xd9483b, metalness: 0.7, roughness: 0.3, emissive: tm === 1 ? 0x10305a : 0x5a1410 });
+        for (const dz of [-1.2, 1.2]) { const t = box(6, 9, 0.5, mat, 0, 0, dz); t.rotation.z = dz * 0.12; m.add(t); }
+        const chain = new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.25, 4, 16), M.metal); chain.position.y = 5; m.add(chain);
+        objGroup.add(m); objView.tags.set(id, m);
+      }
+      m.position.set(x, 22 + Math.sin(now / 280 + id) * 3, y); m.rotation.y = now / 400 + id;
+    }
+    for (const [id, m] of objView.tags) if (!seen.has(id)) { objGroup.remove(m); objView.tags.delete(id); }
   }
   for (const f of objView.dom.concat(objView.flags)) { const cl = f.flag.userData.cloth; cl.rotation.y = Math.sin(now / 400 + f.flag.position.x) * 0.25; }
 }
@@ -1565,38 +1626,67 @@ function nameSprite(text, color) {
 }
 function makeSoldier(id, team) {
   const root = new THREE.Group();
-  const uni = new THREE.MeshLambertMaterial({ color: UNIFORM[team] });
-  const dark = new THREE.MeshLambertMaterial({ color: team === 'axis' ? 0x3d4244 : 0x4a4e2a });
-  const boot = new THREE.MeshLambertMaterial({ color: 0x2a2018 });
-  const band = new THREE.MeshLambertMaterial({ color: team === 'axis' ? 0xc0392b : 0x3d7bd0 });
+  const axis = team === 'axis';
+  const uni = new THREE.MeshStandardMaterial({ color: UNIFORM[team], roughness: 0.95 });
+  const helm = new THREE.MeshStandardMaterial({ color: axis ? 0x3d4244 : 0x4a4e2a, roughness: 0.75, metalness: 0.25 });
+  const leather = new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.75 });
+  const web = new THREE.MeshStandardMaterial({ color: axis ? 0x231f1b : 0x8a8258, roughness: 0.9 }); // German black leather, US khaki webbing
+  const band = new THREE.MeshLambertMaterial({ color: axis ? 0xc0392b : 0x3d7bd0 });
+  const cap = (r, len, mat, seg) => new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, seg || 10), mat);
+  const at3 = (o, x, y, z) => { o.position.set(x, y, z); return o; };
   const mkLeg = (z) => {
     const g = new THREE.Group(); g.position.set(0, 34, z);
-    const l = box(7, 30, 7, uni, 0, -15, 0); g.add(l);
-    g.add(box(9, 5, 7.5, boot, 1.2, -32, 0));
-    return g;
+    g.add(at3(cap(3.9, 10, uni), 0, -8, 0));                      // thigh
+    const knee = new THREE.Group(); knee.position.y = -16; g.add(knee);
+    knee.add(at3(cap(3.2, 9, uni), 0, -6.5, 0));                   // shin
+    knee.add(at3(new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.6, axis ? 9 : 7, 12), axis ? leather : web), 0, axis ? -11 : -12, 0)); // jackboot / canvas legging
+    const foot = new THREE.Mesh(new THREE.CapsuleGeometry(2.6, 5, 3, 8), leather); foot.rotation.z = Math.PI / 2; foot.scale.set(1, 1, 1.15); foot.position.set(1.6, -16.2, 0); knee.add(foot);
+    return { g, knee };
   };
-  const legL = mkLeg(-4.5), legR = mkLeg(4.5);
-  root.add(legL, legR);
+  const L = mkLeg(-4.4), R = mkLeg(4.4);
+  root.add(L.g, R.g);
   const upper = new THREE.Group(); root.add(upper);
-  upper.add(box(10, 25, 17, uni, 0, 46, 0));
-  upper.add(box(11, 3, 18, boot, 0, 35, 0)); // belt
-  upper.add(box(4, 5, 4, M.skin, 0, 59.5, 0)); // neck
-  const head = new THREE.Mesh(new THREE.SphereGeometry(5.6, 12, 10), M.skin); head.position.set(0.5, 64, 0); upper.add(head);
-  const helmet = new THREE.Mesh(new THREE.SphereGeometry(7.2, 14, 8, 0, TAU, 0, Math.PI / 2), dark); helmet.position.set(0, 65.5, 0); upper.add(helmet);
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(team === 'axis' ? 7.6 : 8.4, team === 'axis' ? 8.6 : 8.4, 1, 14), dark); brim.position.set(0, team === 'axis' ? 64.5 : 65.6, 0); upper.add(brim);
-  upper.add(box(4, 3.5, 2, band, 0, 50, -9.5)); // armband (left)
-  upper.add(box(4, 3.5, 2, band, 0, 50, 9.5));
-  const pack = box(5, 14, 12, boot, -7, 48, 0); upper.add(pack);
+  const pelvis = cap(5.2, 6.5, uni); pelvis.rotation.x = Math.PI / 2; pelvis.scale.set(0.85, 1, 1); pelvis.position.y = 36; upper.add(pelvis);
+  const torso = cap(7, 11, uni, 14); torso.scale.set(0.7, 1, 1.18); torso.position.y = 48; upper.add(torso);
+  for (const z of [-8.4, 8.4]) upper.add(at3(new THREE.Mesh(new THREE.SphereGeometry(4.1, 10, 8), uni), 0, 56.5, z)); // shoulders
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(7.4, 7.4, 2.8, 18), web); belt.scale.set(0.72, 1, 1.2); belt.position.y = 38.5; upper.add(belt);
+  upper.add(box(0.6, 2, 2.4, M.metal, 5.4, 38.5, 0)); // buckle
+  for (const z of [-3.2, 3.2]) { const st = box(1.2, 20, 1.6, web, 5.0, 49, z); st.rotation.x = z > 0 ? -0.12 : 0.12; upper.add(st); const bk = box(1.2, 20, 1.6, web, -5.0, 49, z); bk.rotation.x = z > 0 ? 0.12 : -0.12; upper.add(bk); } // Y-straps
+  for (const z of [-6.6, -3.8, 3.8, 6.6]) upper.add(box(3.2, 4, 2.6, web, 5.6, 38.8, z)); // ammo pouches
+  const canteen = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 6, 10), axis ? new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.9 }) : web); canteen.position.set(-3, 35, 8.4); upper.add(canteen);
+  if (axis) { const shovel = box(2, 9, 4.5, leather, -5, 34, -7.8); shovel.rotation.z = 0.3; upper.add(shovel); }
+  const pack = new THREE.Mesh(new THREE.CapsuleGeometry(4.5, 6, 3, 10), axis ? new THREE.MeshStandardMaterial({ color: 0x6a6046, roughness: 0.95 }) : web); pack.scale.set(0.7, 1, 1.25); pack.position.set(-8, 49, 0); upper.add(pack);
+  upper.add(at3(new THREE.Mesh(new THREE.CylinderGeometry(3.4, 4.2, 2.4, 12), uni), 0, 60.2, 0)); // collar
+  upper.add(at3(new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.5, 4, 10), M.skin), 0.4, 62.5, 0)); // neck
+  const head = new THREE.Mesh(new THREE.SphereGeometry(5.3, 16, 12), M.skin); head.scale.set(1, 1.12, 0.9); head.position.set(0.6, 67, 0); upper.add(head);
+  upper.add(at3(box(1.6, 2.2, 1.3, M.skin, 0, 0, 0), 6.0, 66.6, 0)); // nose
+  for (const z of [-1.9, 1.9]) { upper.add(at3(new THREE.Mesh(new THREE.SphereGeometry(0.55, 6, 5), M.dark), 5.4, 68, z)); upper.add(at3(new THREE.Mesh(new THREE.SphereGeometry(1.3, 6, 5), M.skin), 0.2, 67, z * 2.55)); } // eyes, ears
+  if (axis) { // Stahlhelm: deep crown, flared skirt
+    const pts = [[0, 7.4], [3.2, 7.1], [5.6, 5.9], [6.9, 4], [7.3, 1.6], [7.5, -0.4], [8.5, -2.1], [8.9, -2.8], [8.7, -3.0]].map(([r, y]) => new THREE.Vector2(r, y));
+    const h = new THREE.Mesh(new THREE.LatheGeometry(pts, 20), helm); h.position.set(0, 67, 0); upper.add(h);
+  } else { // M1 helmet: rounded shell, thin rim, chin strap
+    const h = new THREE.Mesh(new THREE.SphereGeometry(7.3, 18, 10, 0, TAU, 0, Math.PI / 2), helm); h.scale.set(1.05, 0.9, 1); h.position.set(0.3, 67.6, 0); upper.add(h);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(7.5, 0.55, 6, 22), helm); rim.rotation.x = Math.PI / 2; rim.scale.set(1.05, 1, 1); rim.position.set(0.3, 67.6, 0); upper.add(rim);
+  }
+  for (const z of [-5.6, 5.6]) upper.add(box(0.5, 6, 0.5, web, 1.6, 64.5, z)); // chin strap
+  upper.add(box(4, 3.5, 2, band, 0, 51, -9.6)); upper.add(box(4, 3.5, 2, band, 0, 51, 9.6)); // team armbands
   const canopy = new THREE.Mesh(new THREE.SphereGeometry(46, 14, 8, 0, TAU, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xcfc6a8, side: THREE.DoubleSide }));
   canopy.position.y = 150; canopy.visible = false; root.add(canopy);
   root.userData.canopy = canopy;
-  // gun holder (pitches with aim)
   const holder = new THREE.Group(); holder.position.set(6, 52, 3); upper.add(holder);
-  root.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
   const flash = makeFlash(14);
   root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   scene.add(root);
-  return { root, legL, legR, upper, holder, uniMat: uni, gunKey: '', gun: null, flash, team, tag: null, tagName: '', walk: 0, lastX: 0, lastY: 0, deadAt: 0, flashAt: 0 };
+  return { root, legL: L.g, legR: R.g, kneeL: L.knee, kneeR: R.knee, upper, holder, uniMat: uni, gunKey: '', gun: null, flash, team, tag: null, tagName: '', walk: 0, lastX: 0, lastY: 0, deadAt: 0, flashAt: 0 };
+}
+// rounded limb between two points, with a joint sphere at the far end
+function limbCyl(g, a, b, r0, r1, mat) {
+  const len = a.distanceTo(b);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, len, 10), mat);
+  m.position.copy(a).lerp(b, 0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tmpV.copy(b).sub(a).normalize());
+  g.add(m);
+  const j = new THREE.Mesh(new THREE.SphereGeometry(r1, 8, 6), mat); j.position.copy(b); g.add(j);
 }
 function setSoldierGun(s, key) {
   if (s.gunKey === key) return;
@@ -1607,9 +1697,11 @@ function setSoldierGun(s, key) {
   // arms
   const sleeve = s.uniMat;
   const lh = gun.leftHand;
-  gun.group.add(limb(new THREE.Vector3(-8, 4, 4), new THREE.Vector3(0, -1.5, 0.8), 4, sleeve));
-  gun.group.add(limb(new THREE.Vector3(-8, 4, -10), new THREE.Vector3(lh.x, lh.y, lh.z), 4, sleeve));
-  gun.group.add(box(3, 3, 3, M.skin, lh.x, lh.y, lh.z));
+  const rs = new THREE.Vector3(-8, 4, 5.5), rh = new THREE.Vector3(0, -1.8, 1.2), re = new THREE.Vector3(-6, -5, 7);
+  const ls = new THREE.Vector3(-8, 4, -11), lhv = new THREE.Vector3(lh.x, lh.y, lh.z), le = new THREE.Vector3((ls.x + lh.x) / 2, Math.min(ls.y, lh.y) - 4, (ls.z + lh.z) / 2 - 3.5);
+  limbCyl(gun.group, rs, re, 3.2, 2.8, sleeve); limbCyl(gun.group, re, rh, 2.8, 2.2, sleeve);
+  limbCyl(gun.group, ls, le, 3.2, 2.8, sleeve); limbCyl(gun.group, le, lhv, 2.8, 2.2, sleeve);
+  for (const h of [rh, lhv]) { const hand = new THREE.Mesh(new THREE.SphereGeometry(2.1, 8, 6), M.skin); hand.scale.set(1.3, 1, 0.9); hand.position.copy(h); gun.group.add(hand); }
   s.flash.position.copy(gun.muzzle).add(new THREE.Vector3(3, 0, 0));
   gun.group.add(s.flash);
   s.gun = gun; s.gunKey = key;
@@ -2408,6 +2500,25 @@ function findAssist(players) {
   }
 }
 
+// ---- scope sway: aiming through a scope drifts with your breathing; hold breath (sprint key / L3) to steady it
+const breath = { hold: 0, tired: 0, ox: 0, oy: 0, holding: false };
+function updateSway(now, dt, scoped, st) {
+  const holdIn = scoped && (!!keys[settings.binds.sprint] || (padActive() && PAD.prev[10]));
+  if (breath.tired > 0) breath.tired = Math.max(0, breath.tired - dt);
+  breath.holding = holdIn && breath.tired <= 0 && breath.hold < 4;
+  if (breath.holding) { breath.hold += dt; if (breath.hold >= 4) { breath.tired = 3; tone(180, 0.4, 0.04, 'sine'); } }
+  else breath.hold = Math.max(0, breath.hold - dt * 1.5);
+  let amp = 0;
+  if (scoped && you && you.alive) {
+    amp = 0.0055 * (pred.stance === 2 ? 0.35 : pred.stance === 1 ? 0.6 : 1) * (st.bipod && (pred.stance > 0 || !movingNow) ? 0.25 : 1) * (isTouch ? 0.5 : 1);
+    if (breath.holding) amp *= 0.08; else if (breath.tired > 0) amp *= 1.7;
+  }
+  const t = now / 1000;
+  const nx = amp * (Math.sin(t * 0.9) + 0.5 * Math.sin(t * 2.3 + 1)), ny = amp * 0.8 * (Math.sin(t * 1.4 + 2) + 0.4 * Math.cos(t * 3.1));
+  yaw += nx - breath.ox; pitch += ny - breath.oy;
+  breath.ox = nx; breath.oy = ny;
+}
+
 // ============================================================ main loop
 let last = performance.now();
 const hudCache = {};
@@ -2493,6 +2604,7 @@ function frame(now) {
   landDip *= Math.pow(0.004, dt);
   slideTilt += ((pred.slide > 0 ? 1 : 0) - slideTilt) * Math.min(1, dt * 10);
   const scoped = st.zoom > 1 && adsT > 0.85;
+  updateSway(now, dt, scoped, st);
   const baseFov = settings.fov;
   const fov = (st.zoom > 1 ? baseFov + (baseFov / st.zoom - baseFov) * Math.max(0, (adsT - 0.6) / 0.4) : baseFov - 20 * adsT) + 7 * slideTilt * (1 - adsT);
   if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
@@ -2504,7 +2616,6 @@ function frame(now) {
     const bob = movingNow && grounded ? Math.sin(bobPhase * 2) * (sprint ? 1.6 : pred.stance === 2 ? 1.2 : 0.8) * (1 - adsT * 0.8) : 0;
     camera.position.set(pred.x, eye + bob, pred.y);
     let lp = pitch, ly = yaw;
-    if (scoped) { lp += Math.sin(now / 900) * 0.002; ly += Math.cos(now / 1300) * 0.002; }
     lp += (Math.random() - 0.5) * shake * 0.004; ly += (Math.random() - 0.5) * shake * 0.004;
     tmpV.set(pred.x + Math.cos(ly) * Math.cos(lp) * 100, eye + bob + Math.sin(lp) * 100, pred.y + Math.sin(ly) * Math.cos(lp) * 100);
     camera.lookAt(tmpV);
@@ -2558,11 +2669,12 @@ function frame(now) {
     }
     const swing = sp > 20 ? Math.sin(s.walk) * (p.f & 128 ? 0.8 : 0.5) : 0;
     s.legL.rotation.z = swing; s.legR.rotation.z = -swing;
+    s.kneeL.rotation.z = -(Math.max(0, -swing) * 1.3 + 0.06); s.kneeR.rotation.z = -(Math.max(0, swing) * 1.3 + 0.06); // knees bend on the back stroke
     const cy = crouch || sliding ? 0.55 : 1;
     s.legL.scale.y = s.legR.scale.y = cy;
     s.upper.position.y = crouch || sliding ? -16 : 0;
     s.holder.rotation.z = (p.q || 0) - s.root.rotation.z; // keep the gun pointed where they aim
-    if (p.f & 1024) { s.legL.rotation.z = 0.5; s.legR.rotation.z = -0.3; } // tuck legs mid-jump
+    if (p.f & 1024) { s.legL.rotation.z = 0.7; s.legR.rotation.z = 0.1; s.kneeL.rotation.z = -1.2; s.kneeR.rotation.z = -0.9; } // tuck legs mid-jump
     if (p.f & 128) s.holder.rotation.x = 0.5; else s.holder.rotation.x = 0;
     // name tags: teammates always, enemies when aimed at
     const r = roster.get(id);
@@ -2785,7 +2897,7 @@ function drawOverlay(now, players, st, scoped, ads, moving, sprint) {
     if (st.optic === 'holo') { const R = Math.min(W, H) * 0.035; c.beginPath(); c.arc(cx, cy, R, 0, TAU); c.stroke(); for (const k of [0, 1, 3]) { const an = k * Math.PI / 2; c.beginPath(); c.moveTo(cx + Math.cos(an) * R, cy + Math.sin(an) * R); c.lineTo(cx + Math.cos(an) * R * 0.72, cy + Math.sin(an) * R * 0.72); c.stroke(); } }
     c.globalAlpha = 1;
   }
-  if (you.alive && inGame() && !scoped) {
+  if (you.alive && inGame() && !scoped && currentMode !== 'hc') {
     const spread = S.currentSpread(st, ads, moving, pred.stance, sprint, pred.air);
     const gap = Math.max(4, Math.tan(spread) / Math.tan(camera.fov * Math.PI / 360) * H / 2);
     const a = Math.max(0, 1 - adsT * 1.6);
@@ -2821,6 +2933,7 @@ function drawOverlay(now, players, st, scoped, ads, moving, sprint) {
 }
 
 function drawMinimap(players) {
+  if (currentMode === 'hc') return; // hardcore: no minimap
   const c = octx;
   const size = 150, ox = 8, oy = 8, scale = 0.09; // world -> px
   c.save();
@@ -2848,6 +2961,8 @@ function drawMinimap(players) {
     c.lineWidth = 14;
     if (currentMode === 'dom' && ob.p) map.dom.forEach((pt, i) => { c.strokeStyle = col(ob.p[i][0]); c.beginPath(); c.arc(pt.x, pt.y, 100, 0, TAU); c.stroke(); });
     if (currentMode === 'ctf' && ob.f) ob.f.forEach(([st, x, y], i) => { c.fillStyle = col(i + 1); c.fillRect(x - 40, y - 60, 70, 45); c.fillRect(x - 40, y - 60, 12, 120); });
+    if ((currentMode === 'sd' || currentMode === 'dem') && ob.s) [map.dom[0], map.dom[2]].forEach((pt, i) => { const st = ob.s[i][0]; c.strokeStyle = st === 1 ? '#ff3020' : st === 2 ? '#777' : '#f0c040'; c.beginPath(); c.arc(pt.x, pt.y, 75, 0, TAU); c.stroke(); });
+    if (currentMode === 'kc' && ob.tg) for (const [x, y, tm] of ob.tg) { c.fillStyle = col(tm); c.fillRect(x - 22, y - 22, 44, 44); }
     if (currentMode === 'hq' && ob.z != null) { const z = map.hq[ob.z]; c.strokeStyle = ob.c ? '#f0c040' : col(ob.h); c.beginPath(); c.arc(z.x, z.y, 140, 0, TAU); c.stroke(); }
   }
   c.restore();
@@ -2883,6 +2998,22 @@ function objectiveHud(now) {
     const sec = Math.ceil(ob.mv / 1000);
     const who = ob.c ? 'Contested' : ob.h === 0 ? 'Unclaimed' : (ob.h === (you.team === 'allies' ? 1 : 2) ? 'Your team holds it' : 'Enemy holds it');
     html = tag(ob.c ? 3 : ob.h, `HQ: ${who}`) + tag(0, `moves in ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`);
+  } else if (currentMode === 'kc' && ob && ob.tg) {
+    html = tag(0, `Dog tags on the ground: ${ob.tg.length}`);
+  } else if ((currentMode === 'sd' || currentMode === 'dem') && ob && ob.s) {
+    const map = S.MAPS[objMapId], mine = you.team === 'allies' ? 1 : 2, attacking = ob.a === mine;
+    const pts = [map.dom[0], map.dom[2]];
+    if (currentMode === 'sd') html += tag(0, `Round ${ob.r}`) + tag(mine, `Alive ${ob.al[mine - 1]} v ${ob.al[2 - mine]}`);
+    html += tag(attacking ? 3 : mine, attacking ? 'Attack' : 'Defend');
+    html += ob.s.map(([st, pp, dp, ms], i) => {
+      const here = you.alive && Math.hypot(pts[i].x - pred.x, pts[i].y - pred.y) < 75;
+      const pr = here && attacking && st === 0 && pp > 0 ? pp : here && !attacking && st === 1 && dp > 0 ? dp : 0;
+      const bar = pr ? `<i style="width:${pr}%;background:${attacking ? '#f0c040' : '#7fd36a'}"></i>` : '';
+      const label = 'AB'[i] + (st === 1 ? ` · BOMB ${Math.ceil(ms / 1000)}s` : st === 2 ? ' · destroyed' : st === 3 ? ' · defused' : '');
+      return tag(st === 1 ? 2 : st === 2 ? 0 : 3, label + bar, here ? ' here' : '');
+    }).join('');
+    const near = ob.s.findIndex(([st], i) => you.alive && Math.hypot(pts[i].x - pred.x, pts[i].y - pred.y) < 75 && (attacking ? st === 0 : st === 1));
+    if (near >= 0) html += tag(3, attacking ? 'Stay on the site to plant' : 'Stay on the bomb to defuse');
   }
   return html;
 }
@@ -2894,6 +3025,7 @@ function updateHud(now) {
   if (hudCache.pp !== pp) { hudCache.pp = pp; $('ptsPop').textContent = pp; $('ptsPop').classList.remove('pop'); void $('ptsPop').offsetWidth; if (pp) $('ptsPop').classList.add('pop'); }
   if (hudCache.ksh !== ksh) { hudCache.ksh = ksh; $('ksPanel').innerHTML = ksh; }
   const md = S.MODES[currentMode] || S.MODES.tdm;
+  document.body.classList.toggle('hardcore', currentMode === 'hc');
   setText('modeLabel', `${md.name} · ${(S.MAPS[objMapId] || S.MAPS.ruins).name} · first to ${match.sl || md.def}`);
   const obh = objectiveHud(now);
   if (hudCache.obh !== obh) { hudCache.obh = obh; $('objbar').innerHTML = obh; }
@@ -2909,7 +3041,7 @@ function updateHud(now) {
   }
   setText('ammoMag', String(you.ammo)); setText('ammoRes', String(you.res));
   setText('nades', (S.LETHALS[you.lt] || S.LETHALS.frag).name + ' x' + you.nd + ' · ' + (S.TACTICALS[you.tt] || S.TACTICALS.flash).name + ' x' + (you.td || 0) + (you.rg ? ' · Rifle Gren x' + you.rg : '') + (you.rl > 0 ? ' · RELOADING' : you.ammo === 0 ? ' · RELOAD!' : ''));
-  setText('stance', pred.slide > 0 ? 'SLIDING' : pred.stance === 2 ? 'PRONE' : pred.stance === 1 ? 'CROUCHED' : pred.air ? 'AIRBORNE' : '');
+  setText('stance', pred.winded ? 'WINDED' : breath.holding ? 'HOLDING BREATH' : breath.tired > 0 ? 'OUT OF BREATH' : pred.slide > 0 ? 'SLIDING' : pred.stance === 2 ? 'PRONE' : pred.stance === 1 ? 'CROUCHED' : pred.air ? 'AIRBORNE' : '');
   setText('ping', offlineMode ? 'OFFLINE' : Math.round(ping) + ' ms · ' + roomCode);
   if (isTouch) $('tRg').classList.toggle('hidden', !(you.rg > 0 && you.slot === 0));
   if (isTouch) { $('tCrouch').classList.toggle('on', crouchOn || proneOn); $('tCrouch').textContent = proneOn ? '⤓' : '↧'; }

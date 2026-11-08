@@ -7,7 +7,7 @@
 const SEND_EVERY = 2; // broadcast at 30 Hz
 const STREAK_WEAPONS = ['Airstrike', 'Mortar Barrage', 'Strafing Run', 'Artillery'];
 // blast size per explosion kind: radius, max damage, source height for cover checks, flat = ignore height
-const BLAST = { semtex: [190, 150, 6], frag: [200, 150, 6], rg: [200, 150, 6], air: [210, 155, 6], mortar: [200, 150, 6], arty: [240, 170, 6], strafe: [55, 75, 160, true] };
+const BLAST = { bomb: [380, 420, 30], semtex: [190, 150, 6], frag: [200, 150, 6], rg: [200, 150, 6], air: [210, 155, 6], mortar: [200, 150, 6], arty: [240, 170, 6], strafe: [55, 75, 160, true] };
 const RESPAWN_MS = 3500;
 const NADE_CODE = { frag: 0, rg: 1, semtex: 2, molotov: 3, knife: 4, flash: 5, stun: 6, smoke: 7 };
 const hasPerk = (p, id) => !!(p && (p.loadout || p.pendingLoadout) && (p.loadout || p.pendingLoadout).perks && (p.loadout || p.pendingLoadout).perks.includes(id));
@@ -15,7 +15,9 @@ const MAX_PLAYERS_PER_ROOM = 16;
 const DOM_RADIUS = 100, FLAG_RADIUS = 38, FLAG_RETURN_MS = 15000, HQ_RADIUS = 140, HQ_MOVE_MS = 60000;
 // Quick Play cycles through every map and mode
 const ROTATION = [['ruins', 'tdm'], ['village', 'dom'], ['winter', 'ctf'], ['island', 'hq'], ['village', 'tdm'], ['winter', 'dom'], ['island', 'ctf'], ['ruins', 'hq'], ['winter', 'tdm'], ['island', 'dom'], ['ruins', 'ctf'], ['village', 'hq'],
-  ['rail', 'tdm'], ['camp', 'dom'], ['harbor', 'ctf'], ['rail', 'hq'], ['camp', 'tdm'], ['harbor', 'dom'], ['rail', 'ctf'], ['camp', 'hq'], ['harbor', 'tdm']];
+  ['rail', 'tdm'], ['camp', 'dom'], ['harbor', 'ctf'], ['rail', 'hq'], ['camp', 'tdm'], ['harbor', 'dom'], ['rail', 'ctf'], ['camp', 'hq'], ['harbor', 'tdm'],
+  ['town', 'kc'], ['village', 'sd'], ['harbor', 'dem'], ['ruins', 'hc'], ['rail', 'kc'], ['town', 'sd'], ['winter', 'dem'], ['camp', 'kc'], ['island', 'hc'], ['ruins', 'sd'], ['rail', 'dem']];
+const SITE_R = 75, PLANT_S = 4, DEFUSE_S = 6, SD_ROUND_MS = 100000;
 
 // ------------------------------------------------------------ bot pathing
 const CELL = 40;
@@ -196,6 +198,72 @@ class Room {
       const flag = (team) => ({ team, home: m.flags[team], x: m.flags[team].x, y: m.flags[team].y, state: 'home', carrier: 0, dropAt: 0 });
       this.obj = { flags: { allies: flag('allies'), axis: flag('axis') } };
     } else if (this.mode === 'hq') this.obj = { zones: m.hq, idx: 0, moveAt: now + HQ_MOVE_MS, nextScore: now + 1000, holder: null, contested: false };
+    else if (this.mode === 'kc') this.obj = { tags: [] };
+    else if (this.mode === 'sd' || this.mode === 'dem') {
+      this.obj = { sites: [m.dom[0], m.dom[2]].map((q) => ({ x: q.x, y: q.y, state: 'idle', prog: 0, def: 0, explodeAt: 0, planter: 0 })), attackers: 'allies', round: 1, phase: 'live', roundEndsAt: now + SD_ROUND_MS, nextRoundAt: 0 };
+      if (this.mode === 'sd') this.endsAt = Infinity;
+    }
+  }
+  // ---- bomb modes (Search & Destroy, Demolition)
+  aliveOf(team) { let n = 0; for (const p of this.players.values()) if (p.alive && p.team === team && !p.para) n++; return n; }
+  roundWin(team, why, now) {
+    const o = this.obj;
+    if (o.phase !== 'live') return;
+    this.score[team]++;
+    o.phase = 'over'; o.nextRoundAt = now + 5000;
+    this.events.push({ e: 'obj', k: 'round', t: team, w: why });
+    for (const p of this.players.values()) if (p.alive && p.team === team) this.award(p, 100, 'Round won', now);
+  }
+  startRound(now) {
+    const o = this.obj;
+    o.round++; o.attackers = o.attackers === 'allies' ? 'axis' : 'allies';
+    o.phase = 'live'; o.roundEndsAt = now + SD_ROUND_MS;
+    for (const st of o.sites) Object.assign(st, { state: 'idle', prog: 0, def: 0, explodeAt: 0, planter: 0 });
+    this.nades = []; this.fires = []; this.clouds = []; this.packs = []; this.strikes = [];
+    for (const q of [...this.players.values()]) if (q.para) this.players.delete(q.id);
+    for (const p of this.players.values()) this.spawn(p, now);
+    this.events.push({ e: 'obj', k: 'start', t: o.attackers, i: o.round });
+  }
+  updateBomb(now, dt) {
+    const o = this.obj, att = o.attackers, def = att === 'allies' ? 'axis' : 'allies', sd = this.mode === 'sd';
+    if (sd && o.phase === 'over') { if (now >= o.nextRoundAt && this.score.allies < this.scoreLimit && this.score.axis < this.scoreLimit) this.startRound(now); return; }
+    const planted = o.sites.find((st) => st.state === 'planted');
+    o.sites.forEach((st, i) => {
+      if (st.state === 'gone' || (st.state === 'defused' && sd)) return;
+      if (st.state === 'idle') {
+        if (sd && planted) return;
+        let planter = null;
+        for (const p of this.players.values()) if (p.alive && p.team === att && !p.para && Math.hypot(p.x - st.x, p.y - st.y) < SITE_R) { planter = p; break; }
+        st.prog = planter ? st.prog + dt : Math.max(0, st.prog - dt * 2);
+        if (planter && st.prog >= PLANT_S) {
+          st.state = 'planted'; st.prog = 0; st.def = 0; st.planter = planter.id;
+          st.explodeAt = now + (sd ? 35000 : 30000);
+          this.events.push({ e: 'obj', k: 'plant', i, t: att, b: planter.id });
+          this.award(planter, S.POINTS.plant, 'Bomb planted', now);
+        }
+      } else if (st.state === 'planted') {
+        let defuser = null;
+        for (const p of this.players.values()) if (p.alive && p.team === def && !p.para && Math.hypot(p.x - st.x, p.y - st.y) < SITE_R - 15) { defuser = p; break; }
+        st.def = defuser ? st.def + dt : 0;
+        if (defuser && st.def >= DEFUSE_S) {
+          st.state = sd ? 'defused' : 'idle'; st.def = 0; st.prog = 0;
+          this.events.push({ e: 'obj', k: 'defuse', i, t: def, b: defuser.id });
+          this.award(defuser, S.POINTS.defuse, 'Bomb defused', now);
+          if (sd) this.roundWin(def, 'Bomb defused', now);
+        } else if (now >= st.explodeAt) {
+          st.state = 'gone';
+          this.explode({ kind: 'bomb', x: st.x, y: st.y, h: 12, owner: st.planter, team: att }, now);
+          this.events.push({ e: 'obj', k: 'boom', i, t: att });
+          if (sd) this.roundWin(att, 'Target destroyed', now); else this.score[att]++;
+        }
+      }
+    });
+    if (!sd) return;
+    const nowPlanted = o.sites.some((st) => st.state === 'planted');
+    const hasAtt = [...this.players.values()].some((p) => p.team === att && !p.para), hasDef = [...this.players.values()].some((p) => p.team === def && !p.para);
+    if (hasDef && !this.aliveOf(def)) this.roundWin(att, 'Defenders eliminated', now);
+    else if (hasAtt && !this.aliveOf(att) && !nowPlanted) this.roundWin(def, 'Attackers eliminated', now);
+    else if (!nowPlanted && now >= o.roundEndsAt) this.roundWin(def, 'Time expired', now);
   }
 
   teamsNear(x, y, r) {
@@ -207,6 +275,18 @@ class Room {
   updateObjectives(now, dt) {
     const o = this.obj;
     if (!o) return;
+    if (this.mode === 'sd' || this.mode === 'dem') { this.updateBomb(now, dt); return; }
+    if (this.mode === 'kc') {
+      o.tags = o.tags.filter((t) => now < t.until);
+      for (const t of o.tags) for (const p of this.players.values()) {
+        if (t.taken || !p.alive || p.para || Math.hypot(p.x - t.x, p.y - t.y) > 38) continue;
+        t.taken = true;
+        if (p.team !== t.team) { this.score[p.team]++; this.award(p, S.POINTS.confirm, 'Kill confirmed', now); this.events.push({ e: 'obj', k: 'conf', t: p.team, i: p.id }); }
+        else { this.award(p, S.POINTS.deny, 'Kill denied', now); this.events.push({ e: 'obj', k: 'deny', t: p.team, i: p.id }); }
+      }
+      o.tags = o.tags.filter((t) => !t.taken);
+      return;
+    }
     if (this.mode === 'dom') {
       for (let i = 0; i < o.pts.length; i++) {
         const pt = o.pts[i], n = this.teamsNear(pt.x, pt.y, DOM_RADIUS);
@@ -259,6 +339,12 @@ class Room {
     if (this.mode === 'dom') return { p: o.pts.map((pt) => [code(pt.owner), Math.round(pt.prog * 100)]) };
     if (this.mode === 'ctf') return { f: ['allies', 'axis'].map((t) => { const f = o.flags[t]; return [f.state === 'home' ? 0 : f.state === 'carried' ? 1 : 2, f.x | 0, f.y | 0, f.carrier || 0]; }) };
     if (this.mode === 'hq') return { z: o.idx, mv: Math.max(0, o.moveAt - now), h: code(o.holder), c: o.contested ? 1 : 0 };
+    if (this.mode === 'kc') return { tg: o.tags.map((t) => [t.x | 0, t.y | 0, code(t.team), t.id]) };
+    if (this.mode === 'sd' || this.mode === 'dem') {
+      const SC = { idle: 0, planted: 1, gone: 2, defused: 3 };
+      return { s: o.sites.map((st) => [SC[st.state], Math.round(st.prog / PLANT_S * 100), Math.round(st.def / DEFUSE_S * 100), st.state === 'planted' ? Math.max(0, st.explodeAt - now) : 0]),
+        a: code(o.attackers), r: o.round, ph: o.phase === 'live' ? 1 : 0, al: [this.aliveOf('allies'), this.aliveOf('axis')] };
+    }
     return null;
   }
 
@@ -280,7 +366,8 @@ class Room {
     p.team = humans('allies') <= humans('axis') ? 'allies' : 'axis';
     this.players.set(p.id, p);
     if (!this.hostId) this.hostId = p.id;
-    if (this.state === 'playing') this.spawn(p, Date.now()); else this.equip(p);
+    if (this.state === 'playing' && !(this.mode === 'sd' && this.obj && Date.now() - (this.obj.roundEndsAt - SD_ROUND_MS) > 15000)) this.spawn(p, Date.now());
+    else { this.equip(p); if (this.state === 'playing') { p.alive = false; p.respawnAt = Infinity; } }
     this.balanceBots();
     this.sendLobby();
   }
@@ -361,6 +448,7 @@ class Room {
 
   damage(victim, dmg, attacker, weapon, now, hs) {
     if (!victim.alive || victim.spawnProtectUntil > now) return;
+    if (this.mode === 'hc') dmg *= 3; // hardcore: real lethality
     victim.hp -= dmg;
     victim.lastHurt = now;
     if (attacker && attacker.id !== victim.id) (victim.hurtBy || (victim.hurtBy = {}))[attacker.id] = now;
@@ -369,7 +457,7 @@ class Room {
       victim.hp = 0;
       victim.alive = false;
       victim.deaths++;
-      victim.respawnAt = now + RESPAWN_MS;
+      victim.respawnAt = this.mode === 'sd' && this.obj && this.obj.phase === 'live' ? Infinity : now + RESPAWN_MS;
       victim.killedBy = attacker.id;
       victim.killedWith = weapon;
       victim.killerPos = [attacker.x | 0, attacker.y | 0];
@@ -381,7 +469,8 @@ class Room {
           const q = this.players.get(+id);
           if (q && q !== attacker && q.team === attacker.team && now - t < 6000) this.award(q, S.POINTS.assist, 'Assist', now);
         }
-        if (this.state === 'playing' && this.mode === 'tdm') this.score[attacker.team]++;
+        if (this.state === 'playing' && (this.mode === 'tdm' || this.mode === 'hc')) this.score[attacker.team]++;
+        if (this.state === 'playing' && this.mode === 'kc' && this.obj && !victim.para) this.obj.tags.push({ id: nextId++, x: victim.x, y: victim.y, team: victim.team, until: now + 30000 });
       }
       victim.hurtBy = {};
       if (attacker !== victim && this.packs) this.packs.push({ id: nextId++, x: victim.x, y: victim.y, until: now + 20000 });
@@ -412,7 +501,7 @@ class Room {
       const thinD = st.fmj ? S.rayWorld(p.x, p.y, eye, dx, dy, dh, maxD, false) : wallD;
       let hd = wallD, hit = null;
       for (const q of this.players.values()) {
-        if (!q.alive || q.team === p.team) continue;
+        if (!q.alive || q === p || (q.team === p.team && this.mode !== 'hc')) continue;
         const t = S.rayCylinder(p.x, p.y, eye - q.z, dx, dy, dh, q.x, q.y, S.PLAYER_R, S.bodyHeight(q.stance));
         if (t < hd) { hd = t; hit = q; }
       }
@@ -421,7 +510,10 @@ class Room {
       if (hit) {
         const hh = eye + dh * hd;
         const hs = hh - hit.z > S.bodyHeight(hit.stance) - S.headZone(hit.stance);
-        let dmg = st.dmg * (hd > st.range ? 0.65 : 1) * (hs ? S.HEADSHOT_MULT : 1);
+        const rel = (hh - hit.z) / S.bodyHeight(hit.stance);
+        const legs = !hs && hit.stance !== 2 && rel < 0.42;
+        const falloff = hd > st.range ? 0.65 : hd > st.range * 0.6 ? 1 - 0.35 * (hd - st.range * 0.6) / (st.range * 0.4) : 1; // damage drops off gradually with range
+        let dmg = st.dmg * falloff * (hs ? S.HEADSHOT_MULT : legs ? 0.75 : 1);
         if (hd > thinD) dmg *= 0.7; // penetrated cover
         const prev = hits.get(hit) || { dmg: 0, hs: false };
         hits.set(hit, { dmg: prev.dmg + dmg, hs: prev.hs || hs });
@@ -570,11 +662,11 @@ class Room {
     n.dead = true;
     this.events.push({ e: 'x', x: n.x | 0, y: n.y | 0, z: Math.max(0, n.h) | 0, sm: n.kind === 'strafe' ? 1 : 0 });
     const owner = this.players.get(n.owner) || { id: n.owner, team: n.team, kills: 0 };
-    const name = { semtex: 'Semtex', rg: 'Rifle Grenade', air: 'Airstrike', mortar: 'Mortar Barrage', arty: 'Artillery', strafe: 'Strafing Run' }[n.kind] || 'Frag Grenade';
+    const name = { bomb: 'Bomb', semtex: 'Semtex', rg: 'Rifle Grenade', air: 'Airstrike', mortar: 'Mortar Barrage', arty: 'Artillery', strafe: 'Strafing Run' }[n.kind] || 'Frag Grenade';
     const streak = STREAK_WEAPONS.includes(name);
     const [R, DMG, SRC, flat] = BLAST[n.kind] || BLAST.frag;
     for (const q of this.players.values()) {
-      if (!q.alive || (q.team === n.team && (q.id !== n.owner || streak))) continue;
+      if (!q.alive || (q.team === n.team && (q.id !== n.owner || streak) && (this.mode !== 'hc' || streak))) continue;
       const qh = q.z + S.bodyHeight(q.stance) * 0.5;
       const d = flat ? Math.hypot(q.x - n.x, q.y - n.y) : Math.hypot(q.x - n.x, q.y - n.y, (qh - n.h) * 0.6);
       if (d > R || !S.hasLOS3(n.x, n.y, Math.max(n.h, SRC), q.x, q.y, qh)) continue;
@@ -862,7 +954,8 @@ class Room {
       if (this.score.allies >= this.scoreLimit || this.score.axis >= this.scoreLimit || now >= this.endsAt) {
         this.state = 'ended';
         this.restartAt = now + (this.lobby ? 10000 : 12000);
-        const w = this.score.allies === this.score.axis ? 'draw' : this.score.allies > this.score.axis ? 'allies' : 'axis';
+        let w = this.score.allies === this.score.axis ? 'draw' : this.score.allies > this.score.axis ? 'allies' : 'axis';
+        if (this.mode === 'dem' && this.obj) w = this.score[this.obj.attackers] >= 2 ? this.obj.attackers : this.obj.attackers === 'allies' ? 'axis' : 'allies';
         this.events.push({ e: 'end', w });
       }
     }
@@ -881,7 +974,7 @@ class Room {
     }
     const base = {
       t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, NADE_CODE[n.kind] || 0]), fz: (this.fires || []).map((f) => [f.x | 0, f.y | 0, f.id]), sk: (this.clouds || []).map((c) => [c.x | 0, c.y | 0, c.id, Math.max(0, c.until - now) | 0]), sv: (this.packs || []).map((k) => [k.x | 0, k.y | 0, k.id]), sc: [Math.floor(this.score.allies), Math.floor(this.score.axis)],
-      tl: Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, mp: this.map, md: this.mode, ob: this.objState(now), rc: [Math.max(0, (this.recon || {}).allies - now) | 0, Math.max(0, (this.recon || {}).axis - now) | 0], jm: [Math.max(0, (this.jam || {}).allies - now) | 0, Math.max(0, (this.jam || {}).axis - now) | 0], dr: (this.drops || []).map((d) => [d.x | 0, d.y | 0, d.team === 'allies' ? 1 : 2, now >= d.landAt ? 1 : 0, d.id, Math.max(0, d.landAt - now) | 0]), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
+      tl: this.mode === 'sd' && this.obj ? (this.obj.sites.find((st) => st.state === 'planted') ? Math.max(0, this.obj.sites.find((st) => st.state === 'planted').explodeAt - now) : this.obj.phase === 'live' ? Math.max(0, this.obj.roundEndsAt - now) : 0) : Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, mp: this.map, md: this.mode, ob: this.objState(now), rc: [Math.max(0, (this.recon || {}).allies - now) | 0, Math.max(0, (this.recon || {}).axis - now) | 0], jm: [Math.max(0, (this.jam || {}).allies - now) | 0, Math.max(0, (this.jam || {}).axis - now) | 0], dr: (this.drops || []).map((d) => [d.x | 0, d.y | 0, d.team === 'allies' ? 1 : 2, now >= d.landAt ? 1 : 0, d.id, Math.max(0, d.landAt - now) | 0]), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
     };
     this.events = [];
     for (const p of this.players.values()) {
@@ -893,7 +986,7 @@ class Room {
         ri: p.alive ? 0 : Math.max(0, p.respawnAt - now), kb: p.killedBy, kw: p.killedWith, kx: p.killerPos,
         g: p.guns.map((x) => [x.id, x.stats.atts]),
         sp: p.sp || 0, ks: p.ks || [], ksl: (p.loadout || p.pendingLoadout).streaks,
-        mv: [+p.z.toFixed(3), +p.vz.toFixed(3), +p.slide.toFixed(4), +p.sdx.toFixed(4), +p.sdy.toFixed(4), +p.slideCd.toFixed(4), p.pc ? 1 : 0, p.ps ? 1 : 0, p.pj ? 1 : 0],
+        mv: [+p.z.toFixed(3), +p.vz.toFixed(3), +p.slide.toFixed(4), +p.sdx.toFixed(4), +p.sdy.toFixed(4), +p.slideCd.toFixed(4), p.pc ? 1 : 0, p.ps ? 1 : 0, p.pj ? 1 : 0, +(p.stam == null ? S.SPRINT_MAX : p.stam).toFixed(4), p.winded ? 1 : 0],
       };
       p.ws.send(JSON.stringify(base));
     }
@@ -957,6 +1050,21 @@ function botGoal(room, p) {
     return { x: theirs.x, y: theirs.y };
   }
   if (room.mode === 'hq') return o.zones[o.idx];
+  if (room.mode === 'kc') {
+    let best = null, bd = 900;
+    for (const t of o.tags) { const d = Math.hypot(t.x - p.x, t.y - p.y); if (d < bd) { bd = d; best = t; } }
+    return best;
+  }
+  if (room.mode === 'sd' || room.mode === 'dem') {
+    const live = o.sites.filter((st) => st.state === 'idle' || st.state === 'planted');
+    if (!live.length) return null;
+    const planted = live.find((st) => st.state === 'planted');
+    if (planted) return planted; // attackers guard it, defenders go defuse
+    const st = live[p.id % live.length];
+    if (p.team === o.attackers) return st;
+    const toward = p.team === 'allies' ? 1 : -1; // defenders hold a little in front of the site
+    return { x: st.x + toward * (p.id % 3) * 60, y: st.y + ((p.id % 2) ? 70 : -70) };
+  }
   return null;
 }
 function botThink(room, p, now, dt) {

@@ -505,6 +505,10 @@
     dom: { name: 'Domination', short: 'DOM', desc: 'Capture and hold flags A, B and C. Each flag held scores points.', scores: [100, 150, 200, 300], def: 200, unit: 'points' },
     ctf: { name: 'Capture the Flag', short: 'CTF', desc: "Steal the enemy flag and bring it to your base while your own flag is home.", scores: [1, 3, 5, 7], def: 3, unit: 'captures' },
     hq: { name: 'Headquarters', short: 'HQ', desc: 'Hold the active HQ zone to score. It moves every minute.', scores: [100, 150, 200, 300], def: 200, unit: 'points' },
+    kc: { name: 'Kill Confirmed', short: 'KC', desc: 'Kills drop dog tags. Grab enemy tags to score, grab your team\'s tags to deny them.', scores: [25, 50, 75, 100], def: 50, unit: 'confirms' },
+    hc: { name: 'Hardcore', short: 'HC', desc: 'Team deathmatch for realists: a few bullets kill, friendly fire is on, and there is no minimap, crosshair or health bar.', scores: [25, 50, 75, 100], def: 50, unit: 'kills' },
+    sd: { name: 'Search & Destroy', short: 'S&D', desc: 'Rounds with one life each. Attackers plant a bomb at site A or B; defenders stop them or defuse it. Sides swap every round.', scores: [3, 4, 6], def: 4, unit: 'rounds' },
+    dem: { name: 'Demolition', short: 'DEM', desc: 'With respawns, the Allies attack: blow up both sites A and B before time runs out. The Axis defend and defuse.', scores: [2], def: 2, unit: 'sites' },
   };
   const MODE_IDS = Object.keys(MODES);
   // Killstreaks: earned by kills in a row without dying (killstreak kills don't count)
@@ -521,7 +525,7 @@
   };
   const STREAK_IDS = Object.keys(STREAKS);
   const DEFAULT_STREAKS = ['recon', 'air', 'mortar'];
-  const POINTS = { kill: 100, headshot: 25, assist: 50, capture: 150, neutralize: 50, flagTake: 100, flagCapture: 300, flagReturn: 100, hqSecond: 10 };
+  const POINTS = { plant: 200, defuse: 250, confirm: 50, deny: 50, kill: 100, headshot: 25, assist: 50, capture: 150, neutralize: 50, flagTake: 100, flagCapture: 300, flagReturn: 100, hqSecond: 10 };
 
   // the active map's walls and spawns (the same array objects are refilled by useMap)
   const WALLS = [];
@@ -688,7 +692,8 @@
 
   // Player movement state used identically by client prediction and the server.
   // flags: 1 aim, 2 sprint, 4 crouch, 8 jump, 16 prone
-  function newMoveState(x, y) { return { x, y, z: 0, vz: 0, stance: 0, slide: 0, sdx: 0, sdy: 0, slideCd: 0, pc: false, ps: false, pj: false, air: false }; }
+  const SPRINT_MAX = 6;
+  function newMoveState(x, y) { return { x, y, z: 0, vz: 0, stance: 0, slide: 0, sdx: 0, sdy: 0, slideCd: 0, pc: false, ps: false, pj: false, air: false, stam: SPRINT_MAX, winded: false }; }
   function stepMove(s, mx, my, flags, dt, stats) {
     const ads = !!(flags & 1), sprintIn = !!(flags & 2), crouch = !!(flags & 4), jump = !!(flags & 8), prone = !!(flags & 16);
     let m = Math.hypot(mx, my);
@@ -701,7 +706,10 @@
     s.pc = crouch;
     if (jump && !s.pj && onGround && !prone) { s.vz = JUMP_V; s.slide = 0; }
     s.pj = jump;
-    const sprint = sprintIn && !crouch && !prone && !ads && moving && s.slide <= 0;
+    if (s.stam == null) { s.stam = SPRINT_MAX; s.winded = false; }
+    const sprint = sprintIn && !crouch && !prone && !ads && moving && s.slide <= 0 && !s.winded;
+    if (sprint) { s.stam -= dt; if (s.stam <= 0) { s.stam = 0; s.winded = true; } }
+    else { s.stam = Math.min(SPRINT_MAX, s.stam + dt * (moving ? 0.6 : 1.0)); if (s.winded && s.stam >= 2.5) s.winded = false; }
     s.ps = sprint;
     s.stance = s.slide > 0 ? 1 : prone ? 2 : crouch ? 1 : 0;
     let vx = 0, vy = 0;
@@ -761,7 +769,7 @@
     HEAD_ZONE, HEADSHOT_MULT, WEAPONS, ATTACHMENTS, ERAS, WALLS, SPAWNS, MAPS, MAP_IDS, MODES, MODE_IDS, STREAKS, STREAK_IDS, DEFAULT_STREAKS, POINTS, HEIGHTS, useMap,
     computeStats, sanitizeLoadout, cleanAtts, resolveCircle, moveCircle, rayWalls, rayWorld, rayCylinder, rayCircle,
     hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, headZone, clamp,
-    groundAt, stepMove, newMoveState, GRAVITY, JUMP_V,
+    groundAt, stepMove, newMoveState, GRAVITY, JUMP_V, SPRINT_MAX,
     LETHALS, TACTICALS, PERKS, PERK_SLOTS, DEFAULT_PERKS, STARTER_CLASSES, streakCost,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

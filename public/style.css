@@ -183,3 +183,4 @@ button.ghost { width: 100%; margin-top: 10px; padding: 10px; background: transpa
 body.pad-nav button:focus, body.pad-nav select:focus, body.pad-nav input:focus, body.pad-nav .check:focus-within { outline: 3px solid #ffd27a; outline-offset: 2px; box-shadow: 0 0 0 6px rgba(255,210,122,.25); }
 .pad-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .pad-row b { color: #ffe2a4; font-weight: 600; }
+body.hardcore #bottomLeft, body.hardcore #ammo { display: none; }

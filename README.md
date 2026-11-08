@@ -13,11 +13,20 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - **Harbor:** warehouses and cargo split by a canal with two bridges. The water stops you walking, but bullets fly over it.
   - **Boot Camp:** a small, fast close-quarters arena inside a log palisade.
   - **Main Street:** a compact home-front town block. A clapboard house faces a general store across a street with parked cars. Both buildings have windows you can shoot or jump through, and backyards have fences you can hop.
-- **4 game modes**:
+- **8 game modes**:
   - **Team Deathmatch:** score kills.
   - **Domination:** capture flags A, B and C. Each flag held scores points.
   - **Capture the Flag:** bring the enemy flag to your base while your own flag is home.
   - **Headquarters:** hold the active zone to score. It moves every minute.
+  - **Kill Confirmed:** kills drop dog tags. Grab enemy tags to score, and your team's tags to deny them.
+  - **Hardcore:** team deathmatch where a few bullets kill and friendly fire is on. There is no minimap, crosshair, health bar or ammo counter.
+  - **Search & Destroy:** rounds with one life each. Attackers plant a bomb at site A or B by staying on the site. Defenders win by killing them all, by running out the clock, or by defusing the bomb (stay on it for 6 seconds). Sides swap every round.
+  - **Demolition:** with respawns, the Allies try to blow up both sites before time runs out, and the Axis defend and defuse.
+- **Realism**:
+  - Soldiers have real proportions: bending knees, rounded torsos, jointed arms, faces, M1 and Stahlhelm helmets, webbing, ammo pouches, canteens and packs.
+  - Leg hits do less damage than body hits, and headshots do more. Damage drops off gradually with range.
+  - Scopes sway with your breathing. Hold sprint (or L3) to hold your breath for up to 4 seconds, and you're out of breath for a moment afterwards.
+  - Sprinting tires you out after about 6 seconds ("WINDED") until you get your breath back.
 - Bots play the objectives. The host picks the map, mode, score limit and time limit, and Quick Play rotates through every map and mode.
 - Up to 16 players per room.
 - **Main menu with lobbies**:
