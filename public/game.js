@@ -368,7 +368,7 @@ function showErr(msg) {
   $('err').textContent = msg;
 }
 
-const SCREENS = ['menu', 'armory', 'createScreen', 'browseScreen', 'lobbyScreen'];
+const SCREENS = ['menu', 'armory', 'createScreen', 'browseScreen', 'lobbyScreen', 'operatorScreen'];
 function showScreen(id) {
   for (const s2 of SCREENS) $(s2).classList.toggle('hidden', s2 !== id);
   if (id) for (const s2 of ['hud', 'touch', 'pause', 'scoreboard', 'loadoutScreen']) $(s2).classList.add('hidden');
@@ -745,6 +745,7 @@ function handleEvent(e, now) {
     case 'end': match.winner = e.w; break;
     case 'obj': objNotice(e, now); break;
     case 'ksE': if (e.i === myId) streakEarned(e.k, now); break;
+    case 'ksCycle': if (e.i === myId) { notice('All three scorestreaks earned! The cycle restarts: earn them again', true, now); tone(990, 0.12, 0.07, 'triangle'); } break;
     case 'pts': if (e.i === myId) pointsEarned(e, now); break;
     case 'sup': if (e.i === myId) { notice('Resupplied: full ammo, grenades and health', true, now); tone(700, 0.1, 0.07, 'triangle'); setTimeout(() => tone(1050, 0.15, 0.07, 'triangle'), 100); } break;
     case 'ks': streakUsed(e, now); break;
@@ -946,6 +947,9 @@ const THEMES = {
   harbor: { fog: 0xa9b5bc, near: 500, far: 2900, sky: 0xc6d2da, gnd: 0x5c5e5c, hemi: 1.25, sun: 0xf2f0e8, sunI: 1.6, ground: 'dock', perim: 'brick', craters: 10, craterCol: 0x3e3c38, wall: 'brick' },
   town: { fog: 0xc9d3d9, near: 700, far: 3300, sky: 0xdde8f0, gnd: 0x6a6a48, hemi: 1.35, sun: 0xfff1d6, sunI: 2.3, ground: 'lawn', perim: 'hedge', craters: 6, craterCol: 0x4a4430, wall: 'brick' },
   camp: { fog: 0xc8bf9f, near: 700, far: 3200, sky: 0xd9d8c8, gnd: 0x6a5a3a, hemi: 1.3, sun: 0xfff0cc, sunI: 2.1, ground: 'dirt', perim: 'palisade', craters: 12, craterCol: 0x4a3f2a, wall: 'planks' },
+  airfield: { fog: 0xbfcbd2, near: 700, far: 3400, sky: 0xd8e4ec, gnd: 0x5c5a4c, hemi: 1.3, sun: 0xfff2dc, sunI: 2.2, ground: 'gravel', perim: 'concrete', craters: 16, craterCol: 0x3a3830, wall: 'concrete' },
+  desert: { fog: 0xdccca6, near: 750, far: 3500, sky: 0xf2e8d0, gnd: 0xa08a5a, hemi: 1.35, sun: 0xfff0cf, sunI: 2.7, ground: 'sand', perim: 'stone', craters: 18, craterCol: 0x8a7448, wall: 'stone', treeline: 'palm' },
+  factory: { fog: 0xa9a69e, near: 500, far: 3000, sky: 0xc4c6c6, gnd: 0x4c4a44, hemi: 1.15, sun: 0xffe8c8, sunI: 1.7, ground: 'gravel', perim: 'brick', craters: 12, craterCol: 0x33312c, wall: 'brick' },
   island: { fog: 0xbcd6e2, near: 800, far: 3600, sky: 0xd6eefb, gnd: 0xa08f62, hemi: 1.3, sun: 0xfff2d6, sunI: 2.5, ground: 'sand', perim: 'jungle', craters: 22, craterCol: 0x8a7a52, wall: 'concrete', treeline: 'palm' },
 };
 const M = {
@@ -1052,7 +1056,7 @@ function buildWorld(mapId) {
       continue;
     }
     if (w.k === 'tree') {
-      if (map.theme === 'island') palmTree(g, cx, cz, 250 + r() * 60, w.w / 2, Math.floor(cx * 7 + cz));
+      if (map.theme === 'island' || map.theme === 'desert') palmTree(g, cx, cz, 250 + r() * 60, w.w / 2, Math.floor(cx * 7 + cz));
       else pineTree(g, cx, cz, 300 + r() * 80, map.theme === 'winter', w.w / 2);
       continue;
     }
@@ -1100,6 +1104,30 @@ function buildWorld(mapId) {
         const wh = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 4, 14), M.steel); wh.rotation.x = Math.PI / 2; if (!horiz) wh.rotation.z = Math.PI / 2;
         wh.position.set(cx + (horiz ? a * len : sd * dep * 0.42), 7, cz + (horiz ? sd * dep * 0.42 : a * len)); g.add(wh);
       }
+      continue;
+    }
+    if (w.k === 'plane') { // parked fighter, nose towards the middle of the map
+      const grp = new THREE.Group(); grp.position.set(cx, 0, cz);
+      const left = cx < S.MAP_W / 2; if (!left) grp.rotation.y = Math.PI;
+      const len = w.w, span = w.h;
+      const paint = new THREE.MeshStandardMaterial({ color: left ? 0x55603a : 0x6a7378, roughness: 0.55, metalness: 0.35 });
+      const add = (geo, mat, x, y, z) => { const m2 = new THREE.Mesh(geo, mat); m2.position.set(x, y, z); m2.castShadow = true; grp.add(m2); return m2; };
+      add(new THREE.CylinderGeometry(9, 15, len * 0.86, 16), paint, 0, 36, 0).rotation.z = Math.PI / 2;
+      add(new THREE.CylinderGeometry(16, 16, 14, 16), M.dark, len * 0.42, 36, 0).rotation.z = Math.PI / 2;
+      add(new THREE.ConeGeometry(6, 12, 12), M.metal, len * 0.53, 36, 0).rotation.z = -Math.PI / 2;
+      for (let b = 0; b < 3; b++) { const bl = add(new THREE.BoxGeometry(1.5, 34, 5), M.dark, len * 0.51, 36, 0); bl.rotation.x = b * TAU / 3; }
+      add(new THREE.BoxGeometry(len * 0.26, 3, span), paint, len * 0.08, 27, 0);
+      add(new THREE.BoxGeometry(len * 0.13, 2.5, span * 0.38), paint, -len * 0.38, 40, 0);
+      add(new THREE.BoxGeometry(len * 0.13, 26, 2.5), paint, -len * 0.41, 53, 0);
+      const can = add(new THREE.SphereGeometry(9, 14, 10), M.glass, len * 0.05, 48, 0); can.scale.set(1.8, 0.8, 0.8);
+      for (const sd of [-1, 1]) {
+        add(new THREE.BoxGeometry(3, 20, 3), M.metal, len * 0.15, 16, sd * span * 0.17);
+        add(new THREE.CylinderGeometry(8, 8, 5, 14), M.tire, len * 0.15, 8, sd * span * 0.17).rotation.x = Math.PI / 2;
+        const dsk = add(new THREE.CircleGeometry(10, 18), new THREE.MeshBasicMaterial({ color: 0xf0f0f0 }), len * 0.08, 28.6, sd * span * 0.33); dsk.rotation.x = -Math.PI / 2;
+        const dot = add(new THREE.CircleGeometry(5, 14), new THREE.MeshBasicMaterial({ color: left ? 0x2a4a8a : 0x202020 }), len * 0.08, 28.8, sd * span * 0.33); dot.rotation.x = -Math.PI / 2;
+      }
+      add(new THREE.CylinderGeometry(4, 4, 4, 10), M.tire, -len * 0.42, 4, 0).rotation.x = Math.PI / 2;
+      g.add(grp);
       continue;
     }
     if (w.k === 'coal') {
@@ -1229,6 +1257,21 @@ function buildWorld(mapId) {
       const stex = new THREE.CanvasTexture(sc); stex.colorSpace = THREE.SRGBColorSpace;
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(200, 38), new THREE.MeshLambertMaterial({ map: stex }));
       sign.rotation.y = -Math.PI / 2; sign.position.set(S.MAP_W - 600 - 300 - 4, 148, 690); g.add(sign);
+    } else if (pr.type === 'runway') {
+      for (const [y0, y1] of [[40, 190], [1410, 1560]]) {
+        const rw = new THREE.Mesh(new THREE.PlaneGeometry(S.MAP_W - 300, y1 - y0), new THREE.MeshLambertMaterial({ map: tex('asphalt') }));
+        rw.rotation.x = -Math.PI / 2; rw.position.set(S.MAP_W / 2, 0.4, (y0 + y1) / 2); rw.receiveShadow = true; g.add(rw);
+        for (let x = 220; x < S.MAP_W - 220; x += 90) { const ln = new THREE.Mesh(new THREE.PlaneGeometry(45, 5), new THREE.MeshBasicMaterial({ color: 0xe8e4d4 })); ln.rotation.x = -Math.PI / 2; ln.position.set(x, 0.6, (y0 + y1) / 2); g.add(ln); }
+      }
+    } else if (pr.type === 'ctower') { // glass control-tower cab on top of the central bunker
+      const cab = new THREE.Mesh(new THREE.BoxGeometry(150, 48, 150), M.glass); cab.position.set(pr.x, 95 + 24, pr.y); g.add(cab);
+      for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const po = new THREE.Mesh(new THREE.BoxGeometry(6, 48, 6), M.steel); po.position.set(pr.x + dx * 72, 119, pr.y + dz * 72); g.add(po); }
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(170, 8, 170), wallMat('concrete', 2, 0.2)); roof.position.set(pr.x, 147, pr.y); roof.castShadow = true; g.add(roof);
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 80, 6), M.steel); mast.position.set(pr.x, 190, pr.y); g.add(mast);
+      const sock = new THREE.Mesh(new THREE.ConeGeometry(6, 26, 10, 1, true), new THREE.MeshLambertMaterial({ color: 0xe07030, side: THREE.DoubleSide })); sock.rotation.z = Math.PI / 2; sock.position.set(pr.x + 14, 222, pr.y); g.add(sock);
+    } else if (pr.type === 'chimney') {
+      const ch = new THREE.Mesh(new THREE.CylinderGeometry(24, 34, 560, 16), wallMat('brick', 3, 9)); ch.position.set(pr.x, 280, pr.y); ch.castShadow = true; g.add(ch);
+      const lip = new THREE.Mesh(new THREE.CylinderGeometry(27, 27, 14, 16), M.dark); lip.position.set(pr.x, 558, pr.y); g.add(lip);
     } else if (pr.type === 'bridge') {
       const deck = new THREE.Mesh(new THREE.BoxGeometry(pr.w + 40, 6, pr.h), wallMat('planks', 1, 1)); deck.position.set(pr.x + pr.w / 2, 3, pr.y + pr.h / 2); deck.receiveShadow = true; g.add(deck);
       for (const sd of [0, 1]) { const rl = new THREE.Mesh(new THREE.BoxGeometry(pr.w + 40, 4, 4), M.steel); rl.position.set(pr.x + pr.w / 2, 30, pr.y + sd * pr.h); g.add(rl); for (const px of [0, 0.5, 1]) { const po = new THREE.Mesh(new THREE.BoxGeometry(4, 30, 4), M.steel); po.position.set(pr.x - 20 + px * (pr.w + 40), 15, pr.y + sd * pr.h); g.add(po); } }
@@ -1456,7 +1499,7 @@ const VM_HIP = new THREE.Vector3(7, -7.6, -18.5), VM_HIP_PISTOL = new THREE.Vect
 const skinMat = new THREE.MeshStandardMaterial({ color: 0xc0906a, roughness: 0.62 });
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 const armGeo = new THREE.CylinderGeometry(1, 0.82, 1, 14); armGeo.rotateX(Math.PI / 2); armGeo.translate(0, 0, 0.5);
-function sleeveMat(team) { return new THREE.MeshStandardMaterial({ color: team === 'axis' ? 0x5a6162 : 0x666b3c, roughness: 0.95 }); }
+function sleeveMat(team) { return uniformMat(team, loadout.op ? loadout.op.uni : 0); }
 function setArm(m, a, b, r) { const d = tmpA.subVectors(b, a); const len = d.length(); m.position.copy(a); m.quaternion.setFromUnitVectors(Z_AXIS, d.normalize()); m.scale.set(r, r, len); }
 const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3();
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
@@ -1493,7 +1536,7 @@ function makeLeftHand() { // cradles the fore-end from below: thumb up the left 
   return h;
 }
 function buildViewmodel(id, atts, team) {
-  const key = id + ':' + atts.join(',') + ':' + team;
+  const key = id + ':' + atts.join(',') + ':' + team + ':' + (loadout.op ? loadout.op.uni : 0);
   if (vm && vm.key === key) return;
   if (vm) vmScene.remove(vm.holder);
   const gun = Guns.makeGun(id, atts);
@@ -1624,11 +1667,45 @@ function nameSprite(text, color) {
   s.scale.set(48, 9, 1); s.renderOrder = 10;
   return s;
 }
-function makeSoldier(id, team) {
+// ---- custom operator looks
+const SKIN_TONES = [0xe8c4a8, 0xd9aa86, 0xc0906a, 0x8d5f3e, 0x5e3d28];
+const HAIR_COLS = [0x4a3020, 0x1c1814, 0xc9a660, 0x8a3e1e, 0x8a8682];
+const UNI_STYLES = [ // [allies base, axis base, camo blotch colours]
+  [0x6b7140, 0x5f666a, null],
+  [0x56603a, 0x5b6150, ['#3b4426', '#7a7a4a', '#2a2a1c']],
+  [0xb39b6a, 0xa8956c, ['#8a7448', '#cdb88a']],
+  [0xdadedf, 0xd4d8da, ['#b9bec2', '#f2f4f5']],
+  [0x35392a, 0x2c3033, ['#22251c', '#45493a']],
+];
+const camoCache = {};
+function camoTex(key, base, cols) {
+  if (camoCache[key]) return camoCache[key];
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'); g.fillStyle = '#' + base.toString(16).padStart(6, '0'); g.fillRect(0, 0, 128, 128);
+  const r = rng(key.length * 97 + base % 1000);
+  for (let i = 0; i < 46; i++) { g.fillStyle = cols[i % cols.length]; g.beginPath(); const x = r() * 128, y = r() * 128; g.ellipse(x, y, 6 + r() * 14, 4 + r() * 9, r() * 3, 0, TAU); g.fill(); for (const dx of [-128, 128]) { g.beginPath(); g.ellipse(x + dx, y, 6 + r() * 14, 4 + r() * 9, r() * 3, 0, TAU); g.fill(); } }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+  return (camoCache[key] = t);
+}
+function uniformMat(team, style) {
+  const st = UNI_STYLES[style] || UNI_STYLES[0], base = st[team === 'axis' ? 1 : 0];
+  if (!st[2]) return new THREE.MeshStandardMaterial({ color: base, roughness: 0.95 });
+  return new THREE.MeshStandardMaterial({ map: camoTex(team + style, base, st[2]), roughness: 0.95 });
+}
+const opFromCode = (code) => { const o = {}; S.OP_KEYS.forEach((k, i) => { o[k] = +(String(code || '')[i] || 0); }); return S.cleanOperator(o); };
+function makeSoldier(id, team, op) {
+  const m = buildSoldierModel(team, op);
+  scene.add(m.root);
+  return m;
+}
+function buildSoldierModel(team, op) {
+  op = S.cleanOperator(op);
   const root = new THREE.Group();
   const axis = team === 'axis';
-  const uni = new THREE.MeshStandardMaterial({ color: UNIFORM[team], roughness: 0.95 });
-  const helm = new THREE.MeshStandardMaterial({ color: axis ? 0x3d4244 : 0x4a4e2a, roughness: 0.75, metalness: 0.25 });
+  const uni = uniformMat(team, op.uni);
+  const skin = new THREE.MeshLambertMaterial({ color: SKIN_TONES[op.skin] });
+  const hairMat = new THREE.MeshLambertMaterial({ color: HAIR_COLS[op.hair] });
+  const helm = new THREE.MeshStandardMaterial({ color: op.uni === 3 ? 0xe6e9ea : op.uni === 2 ? 0x9a8a62 : axis ? 0x3d4244 : 0x4a4e2a, roughness: 0.75, metalness: 0.25 });
   const leather = new THREE.MeshStandardMaterial({ color: 0x2a2018, roughness: 0.75 });
   const web = new THREE.MeshStandardMaterial({ color: axis ? 0x231f1b : 0x8a8258, roughness: 0.9 }); // German black leather, US khaki webbing
   const band = new THREE.MeshLambertMaterial({ color: axis ? 0xc0392b : 0x3d7bd0 });
@@ -1651,24 +1728,51 @@ function makeSoldier(id, team) {
   for (const z of [-8.4, 8.4]) upper.add(at3(new THREE.Mesh(new THREE.SphereGeometry(4.1, 10, 8), uni), 0, 56.5, z)); // shoulders
   const belt = new THREE.Mesh(new THREE.CylinderGeometry(7.4, 7.4, 2.8, 18), web); belt.scale.set(0.72, 1, 1.2); belt.position.y = 38.5; upper.add(belt);
   upper.add(box(0.6, 2, 2.4, M.metal, 5.4, 38.5, 0)); // buckle
-  for (const z of [-3.2, 3.2]) { const st = box(1.2, 20, 1.6, web, 5.0, 49, z); st.rotation.x = z > 0 ? -0.12 : 0.12; upper.add(st); const bk = box(1.2, 20, 1.6, web, -5.0, 49, z); bk.rotation.x = z > 0 ? 0.12 : -0.12; upper.add(bk); } // Y-straps
-  for (const z of [-6.6, -3.8, 3.8, 6.6]) upper.add(box(3.2, 4, 2.6, web, 5.6, 38.8, z)); // ammo pouches
+  if (op.gear === 1) { // chest rig with magazine pouches
+    const rig = box(3, 13, 15, web, 6.2, 47, 0); upper.add(rig);
+    for (const z of [-4.8, -1.6, 1.6, 4.8]) upper.add(box(2.4, 5.5, 2.6, web, 8.0, 45.5, z));
+    for (const z of [-4.8, 4.8]) upper.add(box(1.2, 14, 1.6, web, -5.0, 51, z));
+  }
+  if (op.gear === 0) for (const z of [-3.2, 3.2]) { const st = box(1.2, 20, 1.6, web, 5.0, 49, z); st.rotation.x = z > 0 ? -0.12 : 0.12; upper.add(st); const bk = box(1.2, 20, 1.6, web, -5.0, 49, z); bk.rotation.x = z > 0 ? 0.12 : -0.12; upper.add(bk); } // Y-straps
+  if (op.gear === 0) for (const z of [-6.6, -3.8, 3.8, 6.6]) upper.add(box(3.2, 4, 2.6, web, 5.6, 38.8, z)); // ammo pouches
   const canteen = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 6, 10), axis ? new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.9 }) : web); canteen.position.set(-3, 35, 8.4); upper.add(canteen);
   if (axis) { const shovel = box(2, 9, 4.5, leather, -5, 34, -7.8); shovel.rotation.z = 0.3; upper.add(shovel); }
-  const pack = new THREE.Mesh(new THREE.CapsuleGeometry(4.5, 6, 3, 10), axis ? new THREE.MeshStandardMaterial({ color: 0x6a6046, roughness: 0.95 }) : web); pack.scale.set(0.7, 1, 1.25); pack.position.set(-8, 49, 0); upper.add(pack);
+  if (op.gear !== 2) { const pack = new THREE.Mesh(new THREE.CapsuleGeometry(4.5, 6, 3, 10), axis ? new THREE.MeshStandardMaterial({ color: 0x6a6046, roughness: 0.95 }) : web); pack.scale.set(0.7, 1, 1.25); pack.position.set(-8, 49, 0); upper.add(pack); }
   upper.add(at3(new THREE.Mesh(new THREE.CylinderGeometry(3.4, 4.2, 2.4, 12), uni), 0, 60.2, 0)); // collar
-  upper.add(at3(new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.5, 4, 10), M.skin), 0.4, 62.5, 0)); // neck
-  const head = new THREE.Mesh(new THREE.SphereGeometry(5.3, 16, 12), M.skin); head.scale.set(1, 1.12, 0.9); head.position.set(0.6, 67, 0); upper.add(head);
-  upper.add(at3(box(1.6, 2.2, 1.3, M.skin, 0, 0, 0), 6.0, 66.6, 0)); // nose
-  for (const z of [-1.9, 1.9]) { upper.add(at3(new THREE.Mesh(new THREE.SphereGeometry(0.55, 6, 5), M.dark), 5.4, 68, z)); upper.add(at3(new THREE.Mesh(new THREE.SphereGeometry(1.3, 6, 5), M.skin), 0.2, 67, z * 2.55)); } // eyes, ears
-  if (axis) { // Stahlhelm: deep crown, flared skirt
-    const pts = [[0, 7.4], [3.2, 7.1], [5.6, 5.9], [6.9, 4], [7.3, 1.6], [7.5, -0.4], [8.5, -2.1], [8.9, -2.8], [8.7, -3.0]].map(([r, y]) => new THREE.Vector2(r, y));
-    const h = new THREE.Mesh(new THREE.LatheGeometry(pts, 20), helm); h.position.set(0, 67, 0); upper.add(h);
-  } else { // M1 helmet: rounded shell, thin rim, chin strap
-    const h = new THREE.Mesh(new THREE.SphereGeometry(7.3, 18, 10, 0, TAU, 0, Math.PI / 2), helm); h.scale.set(1.05, 0.9, 1); h.position.set(0.3, 67.6, 0); upper.add(h);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(7.5, 0.55, 6, 22), helm); rim.rotation.x = Math.PI / 2; rim.scale.set(1.05, 1, 1); rim.position.set(0.3, 67.6, 0); upper.add(rim);
+  upper.add(at3(new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.5, 4, 10), skin), 0.4, 62.5, 0)); // neck
+  const head = new THREE.Mesh(new THREE.SphereGeometry(5.3, 16, 12), skin); head.scale.set(1, 1.12, 0.9); head.position.set(0.6, 67, 0); upper.add(head);
+  upper.add(at3(box(1.6, 2.2, 1.3, skin, 0, 0, 0), 6.0, 66.6, 0)); // nose
+  for (const z of [-1.9, 1.9]) { upper.add(at3(new THREE.Mesh(new THREE.SphereGeometry(0.55, 6, 5), M.dark), 5.4, 68, z)); upper.add(at3(new THREE.Mesh(new THREE.SphereGeometry(1.3, 6, 5), skin), 0.2, 67, z * 2.55)); } // eyes, ears
+  const helmet = op.head <= 2;
+  if (!helmet || op.head === 6) { const hair = new THREE.Mesh(new THREE.SphereGeometry(5.6, 14, 8, 0, TAU, 0, Math.PI / 2), hairMat); hair.scale.set(1.02, 0.9, 0.95); hair.position.set(0.2, 68, 0); upper.add(hair); }
+  if (helmet) {
+    if (axis) { // Stahlhelm: deep crown, flared skirt
+      const pts = [[0, 7.4], [3.2, 7.1], [5.6, 5.9], [6.9, 4], [7.3, 1.6], [7.5, -0.4], [8.5, -2.1], [8.9, -2.8], [8.7, -3.0]].map(([r, y]) => new THREE.Vector2(r, y));
+      const h = new THREE.Mesh(new THREE.LatheGeometry(pts, 20), helm); h.position.set(0, 67, 0); upper.add(h);
+    } else { // M1 helmet: rounded shell, thin rim
+      const h = new THREE.Mesh(new THREE.SphereGeometry(7.3, 18, 10, 0, TAU, 0, Math.PI / 2), helm); h.scale.set(1.05, 0.9, 1); h.position.set(0.3, 67.6, 0); upper.add(h);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(7.5, 0.55, 6, 22), helm); rim.rotation.x = Math.PI / 2; rim.scale.set(1.05, 1, 1); rim.position.set(0.3, 67.6, 0); upper.add(rim);
+    }
+    if (op.head === 1) { const net = new THREE.Mesh(new THREE.SphereGeometry(7.9, 12, 7, 0, TAU, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x2c3020, wireframe: true })); net.position.set(0.3, 67.4, 0); upper.add(net); }
+    if (op.head === 2) { // goggles resting on the helmet
+      const band2 = new THREE.Mesh(new THREE.TorusGeometry(7.6, 0.6, 6, 22), leather); band2.rotation.x = Math.PI / 2; band2.position.set(0.3, 69.5, 0); upper.add(band2);
+      for (const z of [-2.2, 2.2]) { const lens = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 1.9, 1.6, 12), new THREE.MeshStandardMaterial({ color: 0x8aa0a8, metalness: 0.6, roughness: 0.1 })); lens.rotation.z = Math.PI / 2; lens.position.set(7.4, 70, z); upper.add(lens); }
+    }
+    for (const z of [-5.6, 5.6]) upper.add(box(0.5, 6, 0.5, web, 1.6, 64.5, z)); // chin strap
+  } else if (op.head === 3) { // field cap with a short visor
+    const cp = new THREE.Mesh(new THREE.CylinderGeometry(5.4, 5.8, 4.2, 14), uni); cp.position.set(0.3, 71, 0); upper.add(cp);
+    const vis = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 4.2, 0.6, 12, 1, false, -Math.PI / 2, Math.PI), uni); vis.position.set(3.2, 69.2, 0); upper.add(vis);
+  } else if (op.head === 4) { // beret
+    const b2 = new THREE.Mesh(new THREE.SphereGeometry(6.2, 14, 8), new THREE.MeshLambertMaterial({ color: axis ? 0x1c1c1c : 0x6a1e22 })); b2.scale.set(1, 0.32, 1); b2.position.set(-0.4, 71.6, -1.2); b2.rotation.x = -0.25; upper.add(b2);
+  } else if (op.head === 5) { // boonie hat
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(5.2, 5.8, 4.5, 14), uni); crown.position.set(0.3, 71.3, 0); upper.add(crown);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(9.5, 9.8, 0.7, 18), uni); brim.position.set(0.3, 69.3, 0); upper.add(brim);
   }
-  for (const z of [-5.6, 5.6]) upper.add(box(0.5, 6, 0.5, web, 1.6, 64.5, z)); // chin strap
+  // face
+  if (op.face === 1) { const st = new THREE.Mesh(new THREE.SphereGeometry(5.35, 12, 8, 0, TAU, Math.PI / 2, Math.PI / 2), new THREE.MeshLambertMaterial({ color: new THREE.Color(SKIN_TONES[op.skin]).multiplyScalar(0.72) })); st.scale.set(1.01, 1.0, 0.92); st.position.set(0.6, 66.6, 0); upper.add(st); }
+  if (op.face === 2 || op.face === 3) upper.add(box(1.2, 0.9, 3.6, hairMat, 5.8, 65.2, 0)); // mustache
+  if (op.face === 3) { const bd = new THREE.Mesh(new THREE.SphereGeometry(5.5, 12, 8, 0, TAU, Math.PI / 2, Math.PI / 2), hairMat); bd.scale.set(1.04, 1.05, 0.95); bd.position.set(0.8, 66.2, 0); upper.add(bd); }
+  if (op.face === 4) { const sc = new THREE.Mesh(new THREE.CylinderGeometry(5.7, 5.4, 4.6, 14), uniformMat(team, op.uni === 0 ? 4 : op.uni)); sc.position.set(0.6, 64.4, 0); upper.add(sc); }
   upper.add(box(4, 3.5, 2, band, 0, 51, -9.6)); upper.add(box(4, 3.5, 2, band, 0, 51, 9.6)); // team armbands
   const canopy = new THREE.Mesh(new THREE.SphereGeometry(46, 14, 8, 0, TAU, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xcfc6a8, side: THREE.DoubleSide }));
   canopy.position.y = 150; canopy.visible = false; root.add(canopy);
@@ -1676,8 +1780,7 @@ function makeSoldier(id, team) {
   const holder = new THREE.Group(); holder.position.set(6, 52, 3); upper.add(holder);
   const flash = makeFlash(14);
   root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  scene.add(root);
-  return { root, legL: L.g, legR: R.g, kneeL: L.knee, kneeR: R.knee, upper, holder, uniMat: uni, gunKey: '', gun: null, flash, team, tag: null, tagName: '', walk: 0, lastX: 0, lastY: 0, deadAt: 0, flashAt: 0 };
+  return { root, legL: L.g, legR: R.g, kneeL: L.knee, kneeR: R.knee, upper, holder, uniMat: uni, gunKey: '', gun: null, flash, team, tag: null, tagName: '', walk: 0, lastX: 0, lastY: 0, deadAt: 0, flashAt: 0, opKey: S.operatorCode(op) };
 }
 // rounded limb between two points, with a joint sphere at the far end
 function limbCyl(g, a, b, r0, r1, mat) {
@@ -2082,6 +2185,64 @@ $('btnBrowse').addEventListener('click', () => { showScreen('browseScreen'); ref
 $('offline').addEventListener('click', () => { phoneFullscreen(); playOffline(); });
 $('btnArmory').addEventListener('click', () => { showScreen('armory'); menuLoadout.render(); });
 $('btnSettings').addEventListener('click', () => openSettings());
+// ---- custom operator editor with a turning 3D preview
+let opPrev = null, opTeam = 'allies';
+function renderOperatorOptions() {
+  const el = $('opOptions'); el.innerHTML = '';
+  for (const k of S.OP_KEYS) {
+    const lab = document.createElement('div'); lab.className = 'lo-label'; lab.textContent = S.OPERATOR[k].label; el.appendChild(lab);
+    const row = document.createElement('div'); row.className = 'lo-atts';
+    S.OPERATOR[k].opts.forEach((name, i) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = name; if (loadout.op[k] === i) b.classList.add('on');
+      b.addEventListener('click', () => { loadout.op = Object.assign({}, loadout.op, { [k]: i }); commitOperator(); });
+      row.appendChild(b);
+    });
+    el.appendChild(row);
+  }
+}
+function commitOperator() {
+  loadout = S.sanitizeLoadout(loadout); save('fl_loadout', loadout);
+  if (joined) send({ t: 'loadout', loadout });
+  renderOperatorOptions(); rebuildOpPreview();
+}
+function rebuildOpPreview() {
+  if (!opPrev) return;
+  if (opPrev.model) opPrev.scene.remove(opPrev.model.root);
+  const m = buildSoldierModel(opTeam, loadout.op);
+  setSoldierGun(m, loadout.primary + ':' + loadout.atts.join(','));
+  m.holder.rotation.z = -0.15;
+  opPrev.scene.add(m.root); opPrev.model = m;
+  $('opTeam').textContent = 'Preview team: ' + (opTeam === 'allies' ? 'Allies' : 'Axis');
+}
+function openOperator() {
+  showScreen('operatorScreen');
+  if (!opPrev) {
+    const cv = $('opPreview');
+    const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true });
+    r.setPixelRatio(Math.min(2, devicePixelRatio)); r.setSize(cv.clientWidth || 300, cv.clientHeight || 380, false);
+    r.toneMapping = THREE.ACESFilmicToneMapping; r.outputColorSpace = THREE.SRGBColorSpace;
+    const sc = new THREE.Scene();
+    sc.add(new THREE.HemisphereLight(0xe8e4d8, 0x4a4030, 1.6));
+    const d = new THREE.DirectionalLight(0xfff0d8, 2.4); d.position.set(60, 120, 80); sc.add(d);
+    const cam = new THREE.PerspectiveCamera(30, (cv.clientWidth || 300) / (cv.clientHeight || 380), 1, 1000);
+    cam.position.set(150, 60, 0); cam.lookAt(0, 42, 0);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(30, 32), new THREE.MeshBasicMaterial({ color: 0x2a2820 })); disc.rotation.x = -Math.PI / 2; sc.add(disc);
+    opPrev = { r, scene: sc, cam, model: null };
+    const loop = () => {
+      if ($('operatorScreen').classList.contains('hidden')) { opPrev.running = false; return; }
+      requestAnimationFrame(loop);
+      if (opPrev.model) opPrev.model.root.rotation.y = performance.now() / 2200;
+      opPrev.r.render(opPrev.scene, opPrev.cam);
+    };
+    opPrev.loop = loop;
+  }
+  renderOperatorOptions(); rebuildOpPreview();
+  if (!opPrev.running) { opPrev.running = true; opPrev.loop(); }
+}
+$('btnOperator').addEventListener('click', openOperator);
+$('opBack').addEventListener('click', () => showMenu(''));
+$('opTeam').addEventListener('click', () => { opTeam = opTeam === 'allies' ? 'axis' : 'allies'; rebuildOpPreview(); });
+$('opRandom').addEventListener('click', () => { loadout.op = Object.fromEntries(S.OP_KEYS.map((k) => [k, Math.floor(Math.random() * S.OPERATOR[k].opts.length)])); commitOperator(); });
 $('ksPanel').addEventListener('click', (e) => { const b = e.target.closest('button[data-ks]'); if (b) useStreak(b.dataset.ks); });
 $('pauseSettings').addEventListener('click', () => { $('pause').classList.add('hidden'); openSettings(); });
 $('loadoutSettings').addEventListener('click', () => { $('loadoutScreen').classList.add('hidden'); openSettings(); });
@@ -2330,8 +2491,8 @@ function deadzone(x, y, dz) {
   return [x * k, y * k, Math.min(1, (m - dz) / (1 - dz))];
 }
 // ---- menu navigation: D-pad / left stick moves focus, A selects, B goes back
-const NAV_SCREENS = ['settingsScreen', 'loadoutScreen', 'pause', 'scoreboard', 'lobbyScreen', 'armory', 'createScreen', 'browseScreen', 'menu'];
-const NAV_BACK = { settingsScreen: 'settingsBack', loadoutScreen: 'loadoutSave', pause: 'resume', armory: 'armoryBack', createScreen: 'createBack', browseScreen: 'browseBack' };
+const NAV_SCREENS = ['operatorScreen', 'settingsScreen', 'loadoutScreen', 'pause', 'scoreboard', 'lobbyScreen', 'armory', 'createScreen', 'browseScreen', 'menu'];
+const NAV_BACK = { operatorScreen: 'opBack', settingsScreen: 'settingsBack', loadoutScreen: 'loadoutSave', pause: 'resume', armory: 'armoryBack', createScreen: 'createBack', browseScreen: 'browseBack' };
 function navRoot() { for (const id of NAV_SCREENS) { const el = $(id); if (el && !el.classList.contains('hidden')) return el; } return null; }
 function navList(root) { return [...root.querySelectorAll('button, select, input')].filter((e) => !e.disabled && e.offsetParent !== null && e.getClientRects().length); }
 function navFocus(el) { if (!el) return; el.focus({ preventScroll: true }); el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
@@ -2636,8 +2797,9 @@ function frame(now) {
     seen.add(id);
     const team = p.f & 1 ? 'axis' : 'allies';
     let s = soldiers.get(id);
-    if (s && s.team !== team) { removeSoldier(id); s = null; }
-    if (!s) { s = makeSoldier(id, team); soldiers.set(id, s); s.lastX = p.x; s.lastY = p.y; }
+    const opc = (roster.get(id) || {}).o || '';
+    if (s && (s.team !== team || (opc && s.opKey !== opc))) { removeSoldier(id); s = null; }
+    if (!s) { s = makeSoldier(id, team, opFromCode(opc)); soldiers.set(id, s); s.lastX = p.x; s.lastY = p.y; }
     setSoldierGun(s, p.w);
     const aliveP = !!(p.f & 2);
     if (!aliveP) {

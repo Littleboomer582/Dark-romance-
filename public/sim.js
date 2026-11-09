@@ -16,6 +16,7 @@ const DOM_RADIUS = 100, FLAG_RADIUS = 38, FLAG_RETURN_MS = 15000, HQ_RADIUS = 14
 // Quick Play cycles through every map and mode
 const ROTATION = [['ruins', 'tdm'], ['village', 'dom'], ['winter', 'ctf'], ['island', 'hq'], ['village', 'tdm'], ['winter', 'dom'], ['island', 'ctf'], ['ruins', 'hq'], ['winter', 'tdm'], ['island', 'dom'], ['ruins', 'ctf'], ['village', 'hq'],
   ['rail', 'tdm'], ['camp', 'dom'], ['harbor', 'ctf'], ['rail', 'hq'], ['camp', 'tdm'], ['harbor', 'dom'], ['rail', 'ctf'], ['camp', 'hq'], ['harbor', 'tdm'],
+  ['airfield', 'tdm'], ['desert', 'dom'], ['factory', 'hq'], ['airfield', 'kc'], ['desert', 'sd'], ['factory', 'ctf'], ['desert', 'tdm'], ['factory', 'dem'], ['airfield', 'dom'],
   ['town', 'kc'], ['village', 'sd'], ['harbor', 'dem'], ['ruins', 'hc'], ['rail', 'kc'], ['town', 'sd'], ['winter', 'dem'], ['camp', 'kc'], ['island', 'hc'], ['ruins', 'sd'], ['rail', 'dem']];
 const SITE_R = 75, PLANT_S = 4, DEFUSE_S = 6, SD_ROUND_MS = 100000;
 
@@ -684,8 +685,15 @@ class Room {
     if (!p.bot) this.events.push({ e: 'pts', i: p.id, n: pts, w: why });
     const chosen = (p.loadout || p.pendingLoadout).streaks || S.DEFAULT_STREAKS;
     p.earned = p.earned || [];
+    const perks = (p.loadout || p.pendingLoadout).perks;
     for (const id of chosen) {
-      if (S.streakCost(id, (p.loadout || p.pendingLoadout).perks) <= p.sp && !p.earned.includes(id)) { p.earned.push(id); p.ks.push(id); this.events.push({ e: 'ksE', i: p.id, k: id }); }
+      if (S.streakCost(id, perks) <= p.sp && !p.earned.includes(id)) { p.earned.push(id); p.ks.push(id); this.events.push({ e: 'ksE', i: p.id, k: id }); }
+    }
+    // earned all three? the streak cycle starts over so you can earn them again (extra points carry over)
+    if (chosen.every((id) => p.earned.includes(id))) {
+      p.sp -= Math.max(...chosen.map((id) => S.streakCost(id, perks)));
+      p.earned = [];
+      this.events.push({ e: 'ksCycle', i: p.id });
     }
   }
   awardNear(x, y, r, team, pts, why, now) {
@@ -993,7 +1001,7 @@ class Room {
   }
 
   sendRoster() {
-    const list = [...this.players.values()].map((p) => ({ i: p.id, n: p.name, t: p.team, k: p.kills, d: p.deaths, b: p.bot ? 1 : 0 }));
+    const list = [...this.players.values()].map((p) => ({ i: p.id, n: p.name, t: p.team, k: p.kills, d: p.deaths, b: p.bot ? 1 : 0, o: S.operatorCode((p.loadout || p.pendingLoadout).op) }));
     const msg = JSON.stringify({ t: 'r', l: list, code: this.code });
     for (const p of this.players.values()) if (!p.bot && p.ws && p.ws.readyState === 1) p.ws.send(msg);
   }
@@ -1022,7 +1030,7 @@ function createBot(team, taken) {
     gun = { primary: id, atts: al.slice(0, Math.floor(Math.random() * 3)) };
   }
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
-  const extras = { lethal: pick(Object.keys(S.LETHALS)), tactical: pick(Object.keys(S.TACTICALS)), perks: S.PERK_SLOTS.map(pick) };
+  const extras = { lethal: pick(Object.keys(S.LETHALS)), tactical: pick(Object.keys(S.TACTICALS)), perks: S.PERK_SLOTS.map(pick), op: Object.fromEntries(S.OP_KEYS.map((k) => [k, Math.floor(Math.random() * S.OPERATOR[k].opts.length)])) };
   if (Math.random() < 0.3) Object.assign(gun, pick(S.STARTER_CLASSES).lo);
   p.pendingLoadout = S.sanitizeLoadout({ secondary: SECONDARIES[Math.floor(Math.random() * SECONDARIES.length)], ...extras, ...gun, streaks: streakPool.slice(0, 3) });
   p.bot = { nextScan: 0, target: null, acquiredAt: 0, aimErr: 0, strafe: 1, strafeUntil: 0, nextPath: 0, lastPos: null, stuckCheck: 0 };

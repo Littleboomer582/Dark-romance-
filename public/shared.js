@@ -10,8 +10,8 @@
   const MAX_HP = 100;
   const SCORE_LIMIT = 50;
   const MATCH_MS = 10 * 60 * 1000;
-  const MAX_ATTACHMENTS = 3;
-  const MAX_SEC_ATTACHMENTS = 1;
+  const MAX_ATTACHMENTS = 5;
+  const MAX_SEC_ATTACHMENTS = 2;
   // stance: 0 standing, 1 crouched (or sliding), 2 prone
   const EYE = [60, 40, 15];
   const BODY = [72, 50, 24];
@@ -269,8 +269,25 @@
       lethal: LETHALS[lo.lethal] ? lo.lethal : 'frag',
       tactical: TACTICALS[lo.tactical] ? lo.tactical : 'flash',
       perks: PERK_SLOTS.map((ids, i) => (Array.isArray(lo.perks) && ids.includes(lo.perks[i]) ? lo.perks[i] : DEFAULT_PERKS[i])),
+      op: cleanOperator(lo.op),
     };
   }
+  // custom operator: what your soldier looks like to everyone
+  const OPERATOR = {
+    skin: { label: 'Skin tone', opts: ['Light', 'Fair', 'Tan', 'Brown', 'Dark'] },
+    face: { label: 'Face', opts: ['Clean-shaven', 'Stubble', 'Mustache', 'Full beard', 'Scarf mask'] },
+    hair: { label: 'Hair', opts: ['Brown', 'Black', 'Blond', 'Red', 'Grey'] },
+    head: { label: 'Headgear', opts: ['Combat helmet', 'Helmet with net', 'Helmet and goggles', 'Field cap', 'Beret', 'Boonie hat', 'Bare head'] },
+    uni: { label: 'Uniform', opts: ['Standard issue', 'Woodland camo', 'Desert', 'Winter whites', 'Night ops'] },
+    gear: { label: 'Gear', opts: ['Webbing and pouches', 'Chest rig', 'Light (belt only)'] },
+  };
+  const OP_KEYS = Object.keys(OPERATOR);
+  function cleanOperator(op) {
+    const out = {};
+    for (const k of OP_KEYS) { const v = op && Number.isInteger(op[k]) ? op[k] : 0; out[k] = v >= 0 && v < OPERATOR[k].opts.length ? v : 0; }
+    return out;
+  }
+  const operatorCode = (op) => OP_KEYS.map((k) => (op && op[k]) || 0).join('');
 
   // -------------------------------------------------------------------- equipment, perks, starter classes
   const LETHALS = {
@@ -319,7 +336,7 @@
   // water blocks walking but bullets and grenades pass over it
   const HEIGHTS = { wall: 130, crate: 48, sand: 34, house: 170, tree: 320, log: 30, rock: 64, bunker: 95, fence: 42,
     boxcar: 112, shed: 150, coal: 70, post: 300, water: 1, warehouse: 190, cargo: 96, palisade: 210, hut: 140,
-    window: 38, hedge: 120, car: 53, truck: 92, planter: 36, store: 170 };
+    window: 38, hedge: 120, car: 53, truck: 92, planter: 36, store: 170, plane: 62 };
   const mirror = (list) => list.concat(list.map((r) => Object.assign({}, r, { x: MAP_W - r.x - r.w })));
   // a building made of wall segments with doorways ('n','s','e','w')
   function house(x, y, w, h, doors, t, k) {
@@ -478,6 +495,50 @@
   ];
   const townSpawns = (flip) => [[540, 420], [540, 800], [540, 1180], [640, 440], [660, 1190], [600, 860], [880, 1190]].map(([x, y]) => ({ x: flip ? MAP_W - x : x, y }));
 
+  // ---- Airfield: hangars, parked fighters behind sandbag revetments, a control tower in the middle
+  const airLeft = [].concat(house(270, 560, 320, 480, 'e', 18, 'warehouse'), [
+    { x: 660, y: 230, w: 170, h: 150, k: 'plane' }, { x: 660, y: 1220, w: 170, h: 150, k: 'plane' },
+    { x: 640, y: 410, w: 210, h: 30, k: 'sand' }, { x: 640, y: 1160, w: 210, h: 30, k: 'sand' },
+    { x: 760, y: 720, w: 64, h: 150, k: 'truck' },
+    { x: 920, y: 640, w: 60, h: 60, k: 'crate' }, { x: 920, y: 900, w: 60, h: 60, k: 'crate' },
+    { x: 1010, y: 470, w: 30, h: 110, k: 'sand' }, { x: 1010, y: 1020, w: 30, h: 110, k: 'sand' },
+    { x: 420, y: 330, w: 50, h: 50, k: 'crate' }, { x: 420, y: 1220, w: 50, h: 50, k: 'crate' },
+  ]);
+  const airCenter = [].concat(house(1110, 710, 180, 180, 'ns', 18, 'bunker'), [
+    { x: 1170, y: 300, w: 60, h: 60, k: 'crate' }, { x: 1170, y: 1240, w: 60, h: 60, k: 'crate' },
+    { x: 1080, y: 520, w: 240, h: 30, k: 'sand' }, { x: 1080, y: 1050, w: 240, h: 30, k: 'sand' },
+  ]);
+  // ---- Desert Outpost: flat-roofed adobe houses, compound walls, palms around a central house
+  const desertLeft = [].concat(
+    building(420, 300, 260, 220, { s: 'd', e: 'w', n: 'w' }, 'house'),
+    building(420, 1080, 260, 220, { n: 'd', e: 'w', s: 'w' }, 'house'),
+    [
+      { x: 790, y: 560, w: 24, h: 160, k: 'wall' }, { x: 790, y: 880, w: 24, h: 160, k: 'wall' },
+      { x: 300, y: 760, w: 40, h: 40, k: 'tree' }, { x: 960, y: 300, w: 40, h: 40, k: 'tree' }, { x: 960, y: 1260, w: 40, h: 40, k: 'tree' },
+      { x: 900, y: 760, w: 90, h: 80, k: 'rock' }, { x: 640, y: 720, w: 60, h: 60, k: 'crate' },
+      { x: 1010, y: 470, w: 30, h: 110, k: 'sand' }, { x: 1010, y: 1020, w: 30, h: 110, k: 'sand' },
+      { x: 560, y: 600, w: 56, h: 120, k: 'car' },
+    ]);
+  const desertCenter = [].concat(building(1080, 680, 240, 240, { n: 'dw', s: 'dw', e: 'w', w: 'w' }, 'house'), [
+    { x: 1180, y: 300, w: 40, h: 40, k: 'tree' }, { x: 1180, y: 1260, w: 40, h: 40, k: 'tree' },
+    { x: 1150, y: 480, w: 100, h: 30, k: 'sand' }, { x: 1150, y: 1090, w: 100, h: 30, k: 'sand' },
+  ]);
+  // ---- Factory: a big pillared factory hall in the middle, loading yards with rail cars on both sides
+  const factLeft = [
+    { x: 300, y: 300, w: 230, h: 44, k: 'boxcar' }, { x: 300, y: 1256, w: 230, h: 44, k: 'boxcar' },
+    { x: 560, y: 140, w: 120, h: 90, k: 'coal' }, { x: 560, y: 1370, w: 120, h: 90, k: 'coal' },
+    { x: 540, y: 700, w: 90, h: 90, k: 'cargo' }, { x: 420, y: 800, w: 60, h: 60, k: 'crate' },
+    { x: 680, y: 520, w: 30, h: 110, k: 'sand' }, { x: 680, y: 970, w: 30, h: 110, k: 'sand' },
+    { x: 620, y: 420, w: 60, h: 60, k: 'crate' }, { x: 620, y: 1120, w: 60, h: 60, k: 'crate' },
+  ];
+  const factCenter = [].concat(building(800, 440, 800, 720, { n: 'ddd', s: 'ddd', w: 'dwd', e: 'dwd' }, 'warehouse', 20), [
+    { x: 990, y: 630, w: 20, h: 20, k: 'post' }, { x: 1190, y: 630, w: 20, h: 20, k: 'post' }, { x: 1390, y: 630, w: 20, h: 20, k: 'post' },
+    { x: 990, y: 950, w: 20, h: 20, k: 'post' }, { x: 1190, y: 950, w: 20, h: 20, k: 'post' }, { x: 1390, y: 950, w: 20, h: 20, k: 'post' },
+    { x: 1040, y: 740, w: 100, h: 80, k: 'cargo' }, { x: 1260, y: 780, w: 100, h: 80, k: 'cargo' },
+    { x: 900, y: 540, w: 60, h: 60, k: 'crate' }, { x: 1440, y: 1000, w: 60, h: 60, k: 'crate' },
+    { x: 1170, y: 520, w: 60, h: 30, k: 'sand' }, { x: 1170, y: 1050, w: 60, h: 30, k: 'sand' },
+  ]);
+
   const MAPS = {
     ruins: { name: 'Ruins', desc: 'Bombed-out town ruins', theme: 'ruins', walls: mirror(ruinsLeft).concat(ruinsCenter) },
     village: { name: 'Village', desc: 'French farm village', theme: 'village', walls: mirror(villageLeft).concat(villageCenter) },
@@ -497,6 +558,14 @@
       props: [{ type: 'tower', x: 1200, y: 800 }],
       spawns: { allies: campSpawns(false), axis: campSpawns(true) },
       obj: { dom: [[860, 800], [1200, 700], [1540, 800]], flags: [[690, 800], [1710, 800]], hq: [[1200, 700], [900, 540], [1500, 1060], [900, 1060], [1500, 540]] } },
+    airfield: { name: 'Airfield', desc: 'Hangars, parked fighters and a control tower', theme: 'airfield', walls: mirror(airLeft).concat(airCenter),
+      props: [{ type: 'runway' }, { type: 'ctower', x: 1200, y: 800 }],
+      obj: { dom: [[700, 800], [1200, 450], [1700, 800]], hq: [[1200, 450], [700, 800], [1700, 800], [1200, 1150], [880, 330]] } },
+    desert: { name: 'Desert Outpost', desc: 'Adobe houses and palms in the desert sun', theme: 'desert', walls: mirror(desertLeft).concat(desertCenter),
+      obj: { dom: [[680, 800], [1200, 800], [1720, 800]], hq: [[1200, 800], [550, 410], [1850, 1190], [550, 1190], [1850, 410]] } },
+    factory: { name: 'Factory', desc: 'A pillared factory hall between two loading yards', theme: 'factory', walls: mirror(factLeft).concat(factCenter),
+      props: [322, 1278].map((y) => ({ type: 'rails', y })).concat([{ type: 'chimney', x: 950, y: -160 }, { type: 'chimney', x: 1450, y: -160 }, { type: 'chimney', x: 1200, y: 1780 }]),
+      obj: { dom: [[560, 900], [1200, 860], [1840, 900]], hq: [[1200, 860], [600, 560], [1800, 1040], [600, 1040], [1800, 560]] } },
   };
   const MAP_IDS = Object.keys(MAPS);
 
@@ -770,7 +839,7 @@
     computeStats, sanitizeLoadout, cleanAtts, resolveCircle, moveCircle, rayWalls, rayWorld, rayCylinder, rayCircle,
     hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, headZone, clamp,
     groundAt, stepMove, newMoveState, GRAVITY, JUMP_V, SPRINT_MAX,
-    LETHALS, TACTICALS, PERKS, PERK_SLOTS, DEFAULT_PERKS, STARTER_CLASSES, streakCost,
+    LETHALS, TACTICALS, PERKS, PERK_SLOTS, DEFAULT_PERKS, STARTER_CLASSES, streakCost, OPERATOR, OP_KEYS, cleanOperator, operatorCode,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Shared = api;

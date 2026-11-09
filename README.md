@@ -4,7 +4,7 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
 
 ## Features
 
-- **8 maps**:
+- **11 maps**:
   - **Ruins:** bombed-out town.
   - **Village:** French farm houses, a barn and a fountain square.
   - **Winter Forest:** snowy pines, log piles, foxholes and falling snow.
@@ -13,6 +13,9 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - **Harbor:** warehouses and cargo split by a canal with two bridges. The water stops you walking, but bullets fly over it.
   - **Boot Camp:** a small, fast close-quarters arena inside a log palisade.
   - **Main Street:** a compact home-front town block. A clapboard house faces a general store across a street with parked cars. Both buildings have windows you can shoot or jump through, and backyards have fences you can hop.
+  - **Airfield:** hangars, parked fighters behind sandbag revetments, runways, and a control tower in the middle.
+  - **Desert Outpost:** flat-roofed adobe houses with doors and windows, compound walls and palm trees.
+  - **Factory:** a big pillared factory hall between two loading yards with rail cars, coal heaps and tall chimneys.
 - **8 game modes**:
   - **Team Deathmatch:** score kills.
   - **Domination:** capture flags A, B and C. Each flag held scores points.
@@ -42,7 +45,7 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - **Modern:** M4A1, M16A4 (burst), SCAR-H, ACR, TAR-21, F2000, AN-94 (burst), XM8, MP7, Vector, P90, UMP45, PP-2000, MG4, LSAT, L86 LSW, CheyTac M200, Barrett M82, DSR 50, AA-12, KSG, M1014, Winchester 1887, Desert Eagle, Glock 18, USP .45, M9, Five-seven, Beretta 93R.
   - Snipers come with a scope.
 - **Modern attachments:** Red Dot and Holographic sights (with a reticle when aiming), ACOG (2.2x), Laser Sight, and an underbarrel Grenade Launcher.
-- **14 attachments**, up to **3 per primary** (one per slot) plus **1 for your sidearm**. They are all modelled on the 3D gun:
+- **14 attachments**, up to **5 per primary** (one per slot) plus **2 for your sidearm**. They are all modelled on the 3D gun:
   - Optic: **Telescopic Scope** (4x zoom with a scope overlay) or **Aperture Sight**
   - Muzzle: **Suppressor** (stays off the enemy radar), **Flash Hider** (less recoil, no flash) or **Rifle Grenade** (3 explosive launched grenades)
   - Underbarrel: **Foregrip** or **Bipod** (deadly accurate while still or crouched)
@@ -77,6 +80,7 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - **Slide:** sprint, then press crouch.
   - **Prone:** slow, but steadier and harder to hit; the bipod works prone.
   - Jumping makes shots inaccurate.
+- **Custom operator** (OPERATOR on the main menu): choose your soldier's skin tone, face (stubble, mustache, beard or scarf mask), hair, headgear (helmet, helmet with net, helmet and goggles, field cap, beret, boonie hat, or bare head), uniform (standard, woodland camo, desert, winter whites, night ops) and gear (webbing, chest rig or light). A turning 3D preview shows the result, and everyone in the match sees your operator. The team armband and name color still show your side.
 - **Starter classes:** eight ready-made classes, each a full setup: Assault, Run & Gun, Sniper, Support, Breacher, Stealth, WWII Rifleman and WWII Commando. Pick one, then change anything you like.
 - **Equipment**:
   - **Lethal** (G):
@@ -107,6 +111,7 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
 - **Scorestreaks**:
   - **Earning points:** kills (+100), headshots (+25), assists (+50), and objectives: capturing or neutralizing Domination flags, taking, capturing or returning CTF flags, and holding the HQ. Points reset when you die.
   - **Choosing:** pick 3 in your loadout. Keys 5, 6 and 7 use them in cost order.
+  - **Cycling:** once you earn all three, the cycle restarts (extra points carry over), so you can earn them all again without dying.
   - **400 Recon Plane:** shows every enemy on your team's minimap.
   - **500 Counter-Recon:** jams the enemy minimap and blocks their recon.
   - **550 Supply Drop:** a crate with full ammo, grenades and health for your team.

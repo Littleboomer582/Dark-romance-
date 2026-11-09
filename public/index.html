@@ -37,6 +37,7 @@
       <div id="loadoutSummary" class="lo-summary"></div>
       <div class="row menu-row2">
         <button id="btnArmory" class="ghost">LOADOUT</button>
+        <button id="btnOperator" class="ghost">OPERATOR</button>
         <button id="btnSettings" class="ghost">SETTINGS</button>
       </div>
       <button id="install" class="ghost hidden">Install as app</button>
@@ -61,6 +62,23 @@
         </label>
       </div>
       <button id="armoryBack" class="big">DONE</button>
+    </div>
+  </div>
+
+  <!-- Custom operator -->
+  <div id="operatorScreen" class="screen hidden">
+    <div class="panel wide">
+      <h2>Operator</h2>
+      <p class="tag">Make your own soldier. Everyone in the match sees it. Your team armband and the color of your name always show which side you are on.</p>
+      <div class="op-wrap">
+        <canvas id="opPreview"></canvas>
+        <div id="opOptions"></div>
+      </div>
+      <div class="row">
+        <button id="opTeam" class="ghost">Preview team: Allies</button>
+        <button id="opRandom" class="ghost">Randomize</button>
+      </div>
+      <button id="opBack" class="big">DONE</button>
     </div>
   </div>
 

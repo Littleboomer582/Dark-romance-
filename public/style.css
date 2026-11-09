@@ -184,3 +184,8 @@ body.pad-nav button:focus, body.pad-nav select:focus, body.pad-nav input:focus, 
 .pad-row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .pad-row b { color: #ffe2a4; font-weight: 600; }
 body.hardcore #bottomLeft, body.hardcore #ammo { display: none; }
+.op-wrap { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+#opPreview { width: 280px; height: 360px; flex: 0 0 auto; background: radial-gradient(circle at 50% 40%, #4a4636, #1c1b15); border: 1px solid var(--line); border-radius: 8px; }
+#opOptions { flex: 1 1 300px; min-width: 0; }
+@media (max-width: 700px) { #opPreview { width: 100%; height: 300px; } }
+#opPreview { position: static; inset: auto; }
