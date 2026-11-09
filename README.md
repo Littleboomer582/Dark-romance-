@@ -30,6 +30,12 @@ An online **team-vs-team** (Allies vs Axis) **first-person** 3D WWII shooter bui
   - Leg hits do less damage than body hits, and headshots do more. Damage drops off gradually with range.
   - Scopes sway with your breathing. Hold sprint (or L3) to hold your breath for up to 4 seconds, and you're out of breath for a moment afterwards.
   - Sprinting tires you out after about 6 seconds ("WINDED") until you get your breath back.
+  - **Weather and time of day:** every match is clear, overcast, dusk, rain or fog. It's random, or the host picks it, and so can you in offline matches. Rain falls and you can hear it; dusk brings a low orange sun and long shadows; fog and rain cut visibility. Bots can't spot you as far away in fog, rain or at dusk.
+  - **Suppression:** enemy bullets that pass close to you crack and whizz past, darken the edges of your vision and shake your aim.
+  - **Concussion:** nearby explosions muffle your hearing, with a ringing in your ears.
+  - **Bullet holes** stay on walls, crates and the ground.
+  - **Reloads:** closed-bolt guns keep a round in the chamber, so reloading before you're empty gives one extra round (30+1). Reloading an empty gun takes 25% longer.
+  - **Deaths:** bodies fall away from the shot and stay on the ground for 10 seconds.
 - Bots play the objectives. The host picks the map, mode, score limit and time limit, and Quick Play rotates through every map and mode.
 - Up to 16 players per room.
 - **Main menu with lobbies**:

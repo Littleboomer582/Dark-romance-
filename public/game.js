@@ -193,11 +193,14 @@ $('controlsHelp').innerHTML = isTouch
 
 // ================================================================== audio
 let actx = null, noiseBuf = null, soundsThisFrame = 0, master = null;
+let muffle = null, rainSrc = null;
 function initAudio() {
   if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
   try {
     actx = new (window.AudioContext || window.webkitAudioContext)();
-    master = actx.createGain(); master.gain.value = settings.volume; master.connect(actx.destination);
+    master = actx.createGain(); master.gain.value = settings.volume;
+    muffle = actx.createBiquadFilter(); muffle.type = 'lowpass'; muffle.frequency.value = 20000;
+    master.connect(muffle); muffle.connect(actx.destination);
     noiseBuf = actx.createBuffer(1, actx.sampleRate * 1.5, actx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -355,7 +358,7 @@ function playOffline() {
   const sock = localSocket();
   attach(sock);
   wsOpen = null;
-  sock.onopen = () => sock.send(JSON.stringify({ t: 'join', name: playerName(), room: 'OFFLINE', quick: true, bots: +$('offBots').value, map: $('offMap').value, mode: $('offMode').value, loadout }));
+  sock.onopen = () => sock.send(JSON.stringify({ t: 'join', name: playerName(), room: 'OFFLINE', quick: true, bots: +$('offBots').value, map: $('offMap').value, mode: $('offMode').value, weather: $('offWeather').value, loadout }));
 }
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
@@ -439,6 +442,7 @@ function onState(m) {
   if (m.mp && (m.md !== objModeId || m.mp !== objMapId)) buildObjectives(m.mp, m.md || 'tdm');
   objState = m.ob;
   match.fz = m.fz; match.sk = m.sk; match.sv = m.sv;
+  if (m.wx && m.wx !== match.wx) { match.wx = m.wx; setWeather(m.wx); }
   match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb; match.rc = m.rc; match.jm = m.jm; match.dr = m.dr;
   lastStateAt = now;
   if (match.st === 'ended' && m.st === 'playing') { match.winner = null; killfeed.length = 0; }
@@ -692,7 +696,8 @@ function handleEvent(e, now) {
       }
       if (e.p === 0) playShot(e.w, e.x, e.y, e.u);
       if (Math.random() < (isMe ? 0.5 : 0.8)) spawnTracer(start, end, e.u);
-      if (e.k) burst(end, 'blood', 5, 60); else { burst(end, 'dust', 4, 50); burst(end, 'spark', 2, 120); }
+      if (e.k) burst(end, 'blood', 5, 60); else { burst(end, 'dust', 4, 50); burst(end, 'spark', 2, 120); addImpact(end); }
+      if (!isMe && teamOf(e.i) !== (you && you.team)) nearMiss(start, end, now);
       break;
     }
     case 'h':
@@ -703,7 +708,11 @@ function handleEvent(e, now) {
         if (src && e.b !== myId) hurtDirs.push({ x: src.x, y: src.y, t: now });
       }
       break;
-    case 'k':
+    case 'k': {
+      const vs = soldiers.get(e.v), last = snaps.length ? snaps[snaps.length - 1].p : null;
+      const kp = e.k === myId ? pred : last && last.get(e.k), vp = last && last.get(e.v);
+      if (vs && kp && vp) { const rel = Math.atan2(kp.y - vp.y, kp.x - vp.x) - vp.a; vs.fallDir = Math.cos(rel) > 0 ? 1 : -1; vs.fallTwist = (Math.random() - 0.5) * 0.7; }
+    }
       killfeed.push({ k: e.k, v: e.v, w: e.w, hs: e.hs, t: now });
       while (killfeed.length > 5) killfeed.shift();
       if (e.k === myId && e.v !== myId) {
@@ -721,6 +730,7 @@ function handleEvent(e, now) {
         break;
       }
       spawnExplosion(e.x, e.z || 5, e.y, now);
+      { const d = Math.hypot(e.x - pred.x, e.y - pred.y); if (muffle && you && you.alive && d < 420) { const t0 = actx.currentTime; muffle.frequency.cancelScheduledValues(t0); muffle.frequency.setValueAtTime(250 + 2200 * (d / 420), t0); muffle.frequency.exponentialRampToValueAtTime(20000, t0 + 3.2); tone(3600, 1.6, 0.05 * (1 - d / 420), 'sine'); supp = Math.min(1, supp + 0.6 * (1 - d / 420)); } }
       if (volAt(e.x, e.y) > 0.6) rumble(260, volAt(e.x, e.y), 0.6 * volAt(e.x, e.y));
       noise(500, 0.9, volAt(e.x, e.y) * 0.9);
       shake = Math.max(shake, 14 * volAt(e.x, e.y));
@@ -1311,8 +1321,98 @@ function buildWorld(mapId) {
     scene.add(snowPts);
   }
   buildObjectives(mapId, currentMode);
+  clearDecals();
+  setWeather(match.wx || 'clear');
+}
+// ---- weather and time of day (the server picks it per match, so everyone sees the same)
+let rainLines = null, curWx = 'clear';
+const SUN_BASE = new THREE.Vector3(S.MAP_W / 2 - 900, 1400, S.MAP_H / 2 - 500);
+function setWeather(wx) {
+  curWx = wx;
+  const th = THEMES[(S.MAPS[worldMapId] || S.MAPS.ruins).theme] || THEMES.ruins;
+  const fog = new THREE.Color(th.fog);
+  let near = th.near, far = th.far, hemiK = 1, sunK = 1, sunCol = new THREE.Color(th.sun), skyCol = new THREE.Color(th.sky);
+  sun.position.copy(SUN_BASE);
+  if (wx === 'overcast') { fog.lerp(new THREE.Color(0xa8acae), 0.5); near *= 0.8; far *= 0.85; hemiK = 0.85; sunK = 0.45; sunCol.set(0xdfe4ea); }
+  else if (wx === 'dusk') { fog.lerp(new THREE.Color(0xc0784a), 0.6); far *= 0.75; hemiK = 0.55; sunK = 0.9; sunCol.set(0xff9248); skyCol.set(0xd09a7a); sun.position.set(S.MAP_W / 2 - 2200, 320, S.MAP_H / 2 - 700); }
+  else if (wx === 'rain') { fog.lerp(new THREE.Color(0x868e93), 0.7); near = 220; far = 1900; hemiK = 0.7; sunK = 0.22; sunCol.set(0xc8d0d8); }
+  else if (wx === 'fog') { fog.lerp(new THREE.Color(0xc2c6c4), 0.65); near = 60; far = 1050; hemiK = 0.9; sunK = 0.4; }
+  scene.fog = new THREE.Fog(fog, near, far); scene.background = fog.clone();
+  hemi.color.copy(skyCol); hemi.intensity = th.hemi * hemiK;
+  sun.color.copy(sunCol); sun.intensity = th.sunI * sunK;
+  if (rainLines) { scene.remove(rainLines); rainLines.geometry.dispose(); rainLines = null; }
+  if (wx === 'rain') {
+    const N = isTouch ? 900 : 2200, arr = new Float32Array(N * 6);
+    for (let i = 0; i < N; i++) { const x = (Math.random() - 0.5) * 1400, y = Math.random() * 520, z = (Math.random() - 0.5) * 1400; arr.set([x, y, z, x + 2, y + 16, z], i * 6); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    rainLines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xb4bec6, transparent: true, opacity: 0.5, depthWrite: false }));
+    rainLines.frustumCulled = false; scene.add(rainLines);
+  }
+  rainSound(wx === 'rain' && joined);
+}
+function rainSound(on) {
+  if (!actx) return;
+  if (on && !rainSrc) {
+    rainSrc = actx.createBufferSource(); rainSrc.buffer = noiseBuf; rainSrc.loop = true;
+    const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.4;
+    const g = actx.createGain(); g.gain.value = 0.07;
+    rainSrc.connect(f); f.connect(g); g.connect(master); rainSrc.start();
+  } else if (!on && rainSrc) { try { rainSrc.stop(); } catch (e) { /* already stopped */ } rainSrc = null; }
+}
+function updateRain(dt) {
+  if (!rainLines) return;
+  const a = rainLines.geometry.attributes.position.array;
+  for (let i = 0; i < a.length; i += 6) {
+    a[i + 1] -= 900 * dt; a[i + 4] -= 900 * dt; a[i] -= 60 * dt; a[i + 3] -= 60 * dt;
+    if (a[i + 1] < 0) { const x = (Math.random() - 0.5) * 1400, z = (Math.random() - 0.5) * 1400, y = 480 + Math.random() * 40; a[i] = x; a[i + 1] = y; a[i + 2] = z; a[i + 3] = x + 2; a[i + 4] = y + 16; a[i + 5] = z; }
+  }
+  rainLines.geometry.attributes.position.needsUpdate = true;
+  rainLines.position.set(camera.position.x, 0, camera.position.z);
+}
+// ---- bullet holes on walls, crates and the ground
+const decals = [];
+let decalMat = null;
+function clearDecals() { for (const d of decals) scene.remove(d); decals.length = 0; }
+function addImpact(p) {
+  let n = null;
+  if (p.y < 2.5) n = new THREE.Vector3(0, 1, 0);
+  else for (const w of S.WALLS) {
+    if (w.k === 'water' || w.k === 'tree' || p.y > w.ht + 2 || p.x < w.x - 2.5 || p.x > w.x + w.w + 2.5 || p.z < w.y - 2.5 || p.z > w.y + w.h + 2.5) continue;
+    const ds = [[Math.abs(p.x - w.x), -1, 0, 0], [Math.abs(p.x - w.x - w.w), 1, 0, 0], [Math.abs(p.z - w.y), 0, 0, -1], [Math.abs(p.z - w.y - w.h), 0, 0, 1], [Math.abs(p.y - w.ht), 0, 1, 0]];
+    ds.sort((a, b) => a[0] - b[0]); n = new THREE.Vector3(ds[0][1], ds[0][2], ds[0][3]); break;
+  }
+  if (!n) return;
+  if (!decalMat) {
+    const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30); gr.addColorStop(0, 'rgba(10,8,6,1)'); gr.addColorStop(0.25, 'rgba(30,26,20,.95)'); gr.addColorStop(0.45, 'rgba(90,80,64,.55)'); gr.addColorStop(1, 'rgba(90,80,64,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    decalMat = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+  }
+  const m = decals.length >= 160 ? decals.shift() : new THREE.Mesh(new THREE.PlaneGeometry(1, 1), decalMat);
+  const sz = 3 + Math.random() * 2.5; m.scale.set(sz, sz, 1);
+  m.position.copy(p).addScaledVector(n, 0.35);
+  m.lookAt(tmpV.copy(m.position).add(n)); m.rotateZ(Math.random() * TAU);
+  if (!m.parent) scene.add(m);
+  decals.push(m);
+}
+// ---- suppression: bullets cracking past you shake your aim and close in your vision
+let supp = 0;
+function nearMiss(a, b, now) {
+  if (!you || !you.alive) return;
+  const eye = tmpC.set(pred.x, myEye(), pred.y);
+  const ab = tmpB.copy(b).sub(a), L2 = ab.lengthSq(); if (L2 < 1) return;
+  const t = S.clamp(tmpA.copy(eye).sub(a).dot(ab) / L2, 0, 1);
+  if (t < 0.12) return;
+  const d = tmpA.copy(a).addScaledVector(ab, t).distanceTo(eye);
+  if (d > 75) return;
+  supp = Math.min(1, supp + 0.3 * (1 - d / 90));
+  noise(5200, 0.05, 0.3 * (1 - d / 75)); // supersonic crack
+  setTimeout(() => noise(1800, 0.09, 0.14 * (1 - d / 75)), 25); // whizz
 }
 function updateSnow(dt, now) {
+  updateRain(dt);
+  supp = Math.max(0, supp - dt * 0.55);
   if (!snowPts) return;
   const a = snowPts.geometry.attributes.position.array;
   for (let i = 0; i < a.length; i += 3) {
@@ -2159,6 +2259,7 @@ function loadoutSummary() {
 }
 function showMenu(err) {
   joined = false;
+  rainSound(false);
   lobbyInfo = null; lastLobbyState = null;
   if (document.pointerLockElement) document.exitPointerLock();
   for (const id of [...soldiers.keys()]) removeSoldier(id);
@@ -2319,6 +2420,10 @@ fillSelect($('cMode'), S.MODE_IDS, 'tdm', modeLabel);
 const fillScores = (el, mode, val) => fillSelect(el, S.MODES[mode].scores, val == null ? S.MODES[mode].def : val, scoreLabel(mode));
 fillScores($('cScore'), 'tdm');
 fillSelect($('cTime'), TIME_OPTS, 10, (o) => o + ' min');
+const WX_OPTS = ['random'].concat(S.WEATHER_IDS), wxLabel = (w) => (w === 'random' ? 'Random' : S.WEATHER[w].name);
+fillSelect($('cWeather'), WX_OPTS, 'random', wxLabel);
+fillSelect($('offWeather'), WX_OPTS, loadSaved('fl_offWeather', 'random'), wxLabel);
+$('offWeather').addEventListener('change', () => save('fl_offWeather', $('offWeather').value));
 $('cMode').addEventListener('change', () => { fillScores($('cScore'), $('cMode').value); $('cModeDesc').textContent = S.MODES[$('cMode').value].desc; });
 $('cMap').addEventListener('change', () => buildWorld($('cMap').value));
 $('cModeDesc').textContent = S.MODES.tdm.desc;
@@ -2330,7 +2435,7 @@ $('createBack').addEventListener('click', () => showMenu(''));
 $('createGo').addEventListener('click', () => {
   phoneFullscreen();
   online(() => send({ t: 'create', name: playerName(), lobbyName: $('lobbyName').value.trim() || $('lobbyName').placeholder,
-    bots: +$('cBots').value, score: +$('cScore').value, time: +$('cTime').value, priv: $('cPriv').checked, map: $('cMap').value, mode: $('cMode').value, loadout }));
+    bots: +$('cBots').value, score: +$('cScore').value, time: +$('cTime').value, priv: $('cPriv').checked, map: $('cMap').value, mode: $('cMode').value, weather: $('cWeather').value, loadout }));
 });
 
 // ---- lobby browser
@@ -2675,7 +2780,8 @@ function updateSway(now, dt, scoped, st) {
     if (breath.holding) amp *= 0.08; else if (breath.tired > 0) amp *= 1.7;
   }
   const t = now / 1000;
-  const nx = amp * (Math.sin(t * 0.9) + 0.5 * Math.sin(t * 2.3 + 1)), ny = amp * 0.8 * (Math.sin(t * 1.4 + 2) + 0.4 * Math.cos(t * 3.1));
+  amp += supp * 0.006; // suppressed: your aim shakes
+  const nx = amp * (Math.sin(t * 0.9) + 0.5 * Math.sin(t * 2.3 + 1) + supp * 0.8 * Math.sin(t * 9.1)), ny = amp * 0.8 * (Math.sin(t * 1.4 + 2) + 0.4 * Math.cos(t * 3.1) + supp * 0.8 * Math.cos(t * 7.3));
   yaw += nx - breath.ox; pitch += ny - breath.oy;
   breath.ox = nx; breath.oy = ny;
 }
@@ -2805,13 +2911,14 @@ function frame(now) {
     if (!aliveP) {
       if (!s.deadAt) s.deadAt = now;
       const k = Math.min(1, (now - s.deadAt) / 350);
-      s.root.rotation.z = k * 1.45;
+      s.root.rotation.z = k * 1.45 * (s.fallDir || 1);
+      s.root.rotation.x = k * (s.fallTwist || 0);
       s.root.position.y = -k * 6;
-      s.root.visible = now - s.deadAt < 3000;
+      s.root.visible = now - s.deadAt < 10000;
       if (s.tag) s.tag.visible = false;
       continue;
     }
-    if (s.deadAt) { s.deadAt = 0; s.root.rotation.z = 0; s.root.position.y = 0; s.lastX = p.x; s.lastY = p.y; }
+    if (s.deadAt) { s.deadAt = 0; s.root.rotation.z = 0; s.root.rotation.x = 0; s.fallDir = 0; s.root.position.y = 0; s.lastX = p.x; s.lastY = p.y; }
     if (s.root.rotation.z > 1.2 && !(p.f & 256)) s.root.rotation.z = 0;
     s.root.visible = true;
     const sp = Math.hypot(p.x - s.lastX, p.y - s.lastY) / Math.max(dt, 0.001);
@@ -3026,6 +3133,12 @@ function drawOverlay(now, players, st, scoped, ads, moving, sprint) {
       gr.addColorStop(0, `rgba(200,190,170,${0.12 * k})`); gr.addColorStop(1, `rgba(60,50,40,${0.65 * k})`);
       c.fillStyle = gr; c.fillRect(0, 0, W, H);
     }
+  }
+  // suppression: the edges of your vision darken
+  if (supp > 0.02 && you.alive) {
+    const gr = c.createRadialGradient(cx, cy, Math.min(W, H) * (0.42 - supp * 0.22), cx, cy, Math.max(W, H) * 0.62);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, `rgba(12,10,8,${0.75 * supp})`);
+    c.fillStyle = gr; c.fillRect(0, 0, W, H);
   }
   // flashbang whiteout
   if (flashT) {

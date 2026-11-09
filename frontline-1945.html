@@ -247,6 +247,7 @@ body.hardcore #bottomLeft, body.hardcore #ammo { display: none; }
       <div class="row">
         <label>Offline map<select id="offMap"></select></label>
         <label>Offline mode<select id="offMode"></select></label>
+        <label>Weather<select id="offWeather"></select></label>
       </div>
       <div class="row">
         <label>Offline bots per team
@@ -289,6 +290,7 @@ body.hardcore #bottomLeft, body.hardcore #ammo { display: none; }
         <label>Bots per team<select id="cBots"></select></label>
         <label>Score limit<select id="cScore"></select></label>
         <label>Time limit<select id="cTime"></select></label>
+        <label>Weather<select id="cWeather"></select></label>
       </div>
       <label class="check"><input type="checkbox" id="cPriv"> Private &mdash; hidden from the lobby list, join by code only</label>
       <button id="createGo" class="big">CREATE</button>
@@ -714,6 +716,9 @@ body.hardcore #bottomLeft, body.hardcore #ammo { display: none; }
       bipod: false, recoil: RECOIL[w.cls], noFlash: false, fmj: false, rifleNades: 0, adsSpeed: 9, atts,
       burst: w.burst || 0, hipMult: 1, optic: null, era: w.era,
     };
+    // closed-bolt guns keep a round in the chamber: a reload before running dry holds one extra
+    s.chamber = (['Assault Rifle', 'Pistol', 'Sniper', 'Rifle'].includes(w.cls) && !['garand', 'revolver', 'bar', 'kar98k', 'springfield', 'mosin', 'arisaka', 'm1887'].includes(id) && !w.bolt)
+      || ['mp5k', 'ump45', 'mp7', 'vector', 'pp2000', 'skorpion', 'p90', 'aa12', 'm1014', 'spas12'].includes(id);
     if (w.scoped) { s.zoom = w.cls === 'Sniper' ? 4 : 4; s.adsMult *= 0.35; s.adsSpeed = 6; s.optic = 'scope'; }
     for (const a of atts) {
       switch (a) {
@@ -1077,6 +1082,11 @@ body.hardcore #bottomLeft, body.hardcore #ammo { display: none; }
     dem: { name: 'Demolition', short: 'DEM', desc: 'With respawns, the Allies attack: blow up both sites A and B before time runs out. The Axis defend and defuse.', scores: [2], def: 2, unit: 'sites' },
   };
   const MODE_IDS = Object.keys(MODES);
+  const WEATHER = {
+    clear: { name: 'Clear day', sight: 1300 }, overcast: { name: 'Overcast', sight: 1200 }, dusk: { name: 'Dusk', sight: 900 },
+    rain: { name: 'Rain', sight: 950 }, fog: { name: 'Fog', sight: 700 },
+  };
+  const WEATHER_IDS = Object.keys(WEATHER);
   // Killstreaks: earned by kills in a row without dying (killstreak kills don't count)
   // Scorestreaks: earned with points (kills, assists, objectives) without dying. Pick 3 in your loadout.
   const STREAKS = {
@@ -1336,7 +1346,7 @@ body.hardcore #bottomLeft, body.hardcore #ammo { display: none; }
     computeStats, sanitizeLoadout, cleanAtts, resolveCircle, moveCircle, rayWalls, rayWorld, rayCylinder, rayCircle,
     hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, headZone, clamp,
     groundAt, stepMove, newMoveState, GRAVITY, JUMP_V, SPRINT_MAX,
-    LETHALS, TACTICALS, PERKS, PERK_SLOTS, DEFAULT_PERKS, STARTER_CLASSES, streakCost, OPERATOR, OP_KEYS, cleanOperator, operatorCode,
+    WEATHER, WEATHER_IDS, LETHALS, TACTICALS, PERKS, PERK_SLOTS, DEFAULT_PERKS, STARTER_CLASSES, streakCost, OPERATOR, OP_KEYS, cleanOperator, operatorCode,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Shared = api;
@@ -1494,6 +1504,8 @@ class Room {
     if (TIME_OPTIONS.includes(+o.time)) this.matchMs = +o.time * 60000;
     if (!this.matchMs) this.matchMs = S.MATCH_MS;
     if (o.priv != null) this.priv = !!o.priv;
+    if (o.weather === 'random' || S.WEATHER[o.weather]) this.weatherPref = o.weather;
+    if (!this.weatherPref) this.weatherPref = 'random';
     if (o.name != null && this.lobby) this.name = cleanText(o.name, 24, this.name || 'Lobby');
   }
 
@@ -1502,6 +1514,8 @@ class Room {
     useRoom(this);
     this.score = { allies: 0, axis: 0 };
     this.state = 'playing';
+    this.weather = this.weatherPref && this.weatherPref !== 'random' ? this.weatherPref : S.WEATHER_IDS[Math.floor(Math.random() * S.WEATHER_IDS.length)];
+    if (this.map === 'winter' && this.weather === 'rain') this.weather = 'overcast'; // it snows there instead
     this.endsAt = now + this.matchMs;
     this.nades = [];
     this.initObjectives(now);
@@ -1783,8 +1797,11 @@ class Room {
 
   startReload(p, now) {
     const g = this.gun(p);
-    if (p.reloadEnd || g.ammo >= g.stats.mag || g.reserve <= 0) return;
-    p.reloadEnd = now + g.stats.reload;
+    const chamber = g.stats.chamber && g.ammo > 0;
+    if (p.reloadEnd || g.ammo >= g.stats.mag + (chamber ? 1 : 0) || g.reserve <= 0) return;
+    p.reloadDur = g.stats.reload * (g.ammo === 0 ? 1.25 : 1); // an empty gun also needs its bolt released
+    p.reloadTac = chamber;
+    p.reloadEnd = now + p.reloadDur;
   }
 
   swap(p, now) {
@@ -2236,7 +2253,7 @@ class Room {
     }
     const g = this.gun(p);
     if (p.reloadEnd && now >= p.reloadEnd) {
-      const need = g.stats.mag - g.ammo;
+      const need = g.stats.mag + (p.reloadTac ? 1 : 0) - g.ammo; // +1 in the chamber
       const take = Math.min(need, g.reserve);
       g.ammo += take; g.reserve -= take;
       p.reloadEnd = 0;
@@ -2328,7 +2345,7 @@ class Room {
     }
     const base = {
       t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, NADE_CODE[n.kind] || 0]), fz: (this.fires || []).map((f) => [f.x | 0, f.y | 0, f.id]), sk: (this.clouds || []).map((c) => [c.x | 0, c.y | 0, c.id, Math.max(0, c.until - now) | 0]), sv: (this.packs || []).map((k) => [k.x | 0, k.y | 0, k.id]), sc: [Math.floor(this.score.allies), Math.floor(this.score.axis)],
-      tl: this.mode === 'sd' && this.obj ? (this.obj.sites.find((st) => st.state === 'planted') ? Math.max(0, this.obj.sites.find((st) => st.state === 'planted').explodeAt - now) : this.obj.phase === 'live' ? Math.max(0, this.obj.roundEndsAt - now) : 0) : Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, mp: this.map, md: this.mode, ob: this.objState(now), rc: [Math.max(0, (this.recon || {}).allies - now) | 0, Math.max(0, (this.recon || {}).axis - now) | 0], jm: [Math.max(0, (this.jam || {}).allies - now) | 0, Math.max(0, (this.jam || {}).axis - now) | 0], dr: (this.drops || []).map((d) => [d.x | 0, d.y | 0, d.team === 'allies' ? 1 : 2, now >= d.landAt ? 1 : 0, d.id, Math.max(0, d.landAt - now) | 0]), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
+      tl: this.mode === 'sd' && this.obj ? (this.obj.sites.find((st) => st.state === 'planted') ? Math.max(0, this.obj.sites.find((st) => st.state === 'planted').explodeAt - now) : this.obj.phase === 'live' ? Math.max(0, this.obj.roundEndsAt - now) : 0) : Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, wx: this.weather || 'clear', mp: this.map, md: this.mode, ob: this.objState(now), rc: [Math.max(0, (this.recon || {}).allies - now) | 0, Math.max(0, (this.recon || {}).axis - now) | 0], jm: [Math.max(0, (this.jam || {}).allies - now) | 0, Math.max(0, (this.jam || {}).axis - now) | 0], dr: (this.drops || []).map((d) => [d.x | 0, d.y | 0, d.team === 'allies' ? 1 : 2, now >= d.landAt ? 1 : 0, d.id, Math.max(0, d.landAt - now) | 0]), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
     };
     this.events = [];
     for (const p of this.players.values()) {
@@ -2336,7 +2353,7 @@ class Room {
       const g = this.gun(p);
       base.you = {
         seq: p.lastSeq, x: p.x, y: p.y, alive: p.alive, hp: Math.ceil(p.hp), slot: p.slot, ammo: g.ammo, res: g.reserve,
-        rl: p.reloadEnd ? Math.max(0, p.reloadEnd - now) / g.stats.reload : 0, nd: p.nades, td: p.tacs || 0, lt: (p.loadout || p.pendingLoadout).lethal, tt: (p.loadout || p.pendingLoadout).tactical, pk: (p.loadout || p.pendingLoadout).perks, fl: Math.max(0, (p.flashUntil || 0) - now), sn: Math.max(0, (p.stunUntil || 0) - now), rg: p.rgren || 0, team: p.team,
+        rl: p.reloadEnd ? Math.max(0, p.reloadEnd - now) / (p.reloadDur || g.stats.reload) : 0, nd: p.nades, td: p.tacs || 0, lt: (p.loadout || p.pendingLoadout).lethal, tt: (p.loadout || p.pendingLoadout).tactical, pk: (p.loadout || p.pendingLoadout).perks, fl: Math.max(0, (p.flashUntil || 0) - now), sn: Math.max(0, (p.stunUntil || 0) - now), rg: p.rgren || 0, team: p.team,
         ri: p.alive ? 0 : Math.max(0, p.respawnAt - now), kb: p.killedBy, kw: p.killedWith, kx: p.killerPos,
         g: p.guns.map((x) => [x.id, x.stats.atts]),
         sp: p.sp || 0, ks: p.ks || [], ksl: (p.loadout || p.pendingLoadout).streaks,
@@ -2434,7 +2451,7 @@ function botThink(room, p, now, dt) {
       if (!q.alive || q.team === p.team) continue;
       const d = Math.hypot(q.x - p.x, q.y - p.y);
       if (hasPerk(q, 'coldblooded') && d > 550 && q !== b.target) continue;
-      if (d < 1300 && d < bd && S.hasLOS3(p.x, p.y, p.z + S.eyeHeight(p.stance), q.x, q.y, q.z + S.bodyHeight(q.stance) - 6) && !room.smokeBlocks(p.x, p.y, q.x, q.y)) { bd = d; best = q; }
+      if (d < (S.WEATHER[room.weather] || S.WEATHER.clear).sight && d < bd && S.hasLOS3(p.x, p.y, p.z + S.eyeHeight(p.stance), q.x, q.y, q.z + S.bodyHeight(q.stance) - 6) && !room.smokeBlocks(p.x, p.y, q.x, q.y)) { bd = d; best = q; }
     }
     if (p.flashUntil > now) best = null;
     if (best && best !== b.target) { b.acquiredAt = now + (hasPerk(best, 'coldblooded') ? 400 : 0); b.aimErr = (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.5); }
@@ -2563,14 +2580,14 @@ function connect(ws) {
       let code;
       if (m.t === 'create') {
         do { code = Array.from({ length: 5 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join(''); } while (rooms.has(code));
-        room = new Room(code, { lobby: true, name: m.lobbyName || name + "'s lobby", bots: m.bots, score: m.score, time: m.time, priv: m.priv, map: m.map, mode: m.mode });
+        room = new Room(code, { lobby: true, name: m.lobbyName || name + "'s lobby", bots: m.bots, score: m.score, time: m.time, priv: m.priv, map: m.map, mode: m.mode, weather: m.weather });
         rooms.set(code, room);
       } else {
         code = String(m.room || 'PUBLIC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'PUBLIC';
         room = rooms.get(code);
         if (!room) {
           if (code !== 'PUBLIC' && code !== 'OFFLINE' && !m.quick) { ws.send(JSON.stringify({ t: 'err', msg: 'No lobby found with code ' + code + '.' })); room = null; return; }
-          room = new Room(code, code === 'PUBLIC' ? { bots: 4, rotate: true } : { bots: m.bots == null ? 4 : m.bots, map: m.map, mode: m.mode, time: m.time });
+          room = new Room(code, code === 'PUBLIC' ? { bots: 4, rotate: true } : { bots: m.bots == null ? 4 : m.bots, map: m.map, mode: m.mode, time: m.time, weather: m.weather });
           rooms.set(code, room);
         }
       }
@@ -4677,11 +4694,14 @@ $('controlsHelp').innerHTML = isTouch
 
 // ================================================================== audio
 let actx = null, noiseBuf = null, soundsThisFrame = 0, master = null;
+let muffle = null, rainSrc = null;
 function initAudio() {
   if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
   try {
     actx = new (window.AudioContext || window.webkitAudioContext)();
-    master = actx.createGain(); master.gain.value = settings.volume; master.connect(actx.destination);
+    master = actx.createGain(); master.gain.value = settings.volume;
+    muffle = actx.createBiquadFilter(); muffle.type = 'lowpass'; muffle.frequency.value = 20000;
+    master.connect(muffle); muffle.connect(actx.destination);
     noiseBuf = actx.createBuffer(1, actx.sampleRate * 1.5, actx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -4839,7 +4859,7 @@ function playOffline() {
   const sock = localSocket();
   attach(sock);
   wsOpen = null;
-  sock.onopen = () => sock.send(JSON.stringify({ t: 'join', name: playerName(), room: 'OFFLINE', quick: true, bots: +$('offBots').value, map: $('offMap').value, mode: $('offMode').value, loadout }));
+  sock.onopen = () => sock.send(JSON.stringify({ t: 'join', name: playerName(), room: 'OFFLINE', quick: true, bots: +$('offBots').value, map: $('offMap').value, mode: $('offMode').value, weather: $('offWeather').value, loadout }));
 }
 function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 
@@ -4923,6 +4943,7 @@ function onState(m) {
   if (m.mp && (m.md !== objModeId || m.mp !== objMapId)) buildObjectives(m.mp, m.md || 'tdm');
   objState = m.ob;
   match.fz = m.fz; match.sk = m.sk; match.sv = m.sv;
+  if (m.wx && m.wx !== match.wx) { match.wx = m.wx; setWeather(m.wx); }
   match.sc = m.sc; match.tl = m.tl; match.rs = m.rs; match.sl = m.sl; match.lb = m.lb; match.rc = m.rc; match.jm = m.jm; match.dr = m.dr;
   lastStateAt = now;
   if (match.st === 'ended' && m.st === 'playing') { match.winner = null; killfeed.length = 0; }
@@ -5176,7 +5197,8 @@ function handleEvent(e, now) {
       }
       if (e.p === 0) playShot(e.w, e.x, e.y, e.u);
       if (Math.random() < (isMe ? 0.5 : 0.8)) spawnTracer(start, end, e.u);
-      if (e.k) burst(end, 'blood', 5, 60); else { burst(end, 'dust', 4, 50); burst(end, 'spark', 2, 120); }
+      if (e.k) burst(end, 'blood', 5, 60); else { burst(end, 'dust', 4, 50); burst(end, 'spark', 2, 120); addImpact(end); }
+      if (!isMe && teamOf(e.i) !== (you && you.team)) nearMiss(start, end, now);
       break;
     }
     case 'h':
@@ -5187,7 +5209,11 @@ function handleEvent(e, now) {
         if (src && e.b !== myId) hurtDirs.push({ x: src.x, y: src.y, t: now });
       }
       break;
-    case 'k':
+    case 'k': {
+      const vs = soldiers.get(e.v), last = snaps.length ? snaps[snaps.length - 1].p : null;
+      const kp = e.k === myId ? pred : last && last.get(e.k), vp = last && last.get(e.v);
+      if (vs && kp && vp) { const rel = Math.atan2(kp.y - vp.y, kp.x - vp.x) - vp.a; vs.fallDir = Math.cos(rel) > 0 ? 1 : -1; vs.fallTwist = (Math.random() - 0.5) * 0.7; }
+    }
       killfeed.push({ k: e.k, v: e.v, w: e.w, hs: e.hs, t: now });
       while (killfeed.length > 5) killfeed.shift();
       if (e.k === myId && e.v !== myId) {
@@ -5205,6 +5231,7 @@ function handleEvent(e, now) {
         break;
       }
       spawnExplosion(e.x, e.z || 5, e.y, now);
+      { const d = Math.hypot(e.x - pred.x, e.y - pred.y); if (muffle && you && you.alive && d < 420) { const t0 = actx.currentTime; muffle.frequency.cancelScheduledValues(t0); muffle.frequency.setValueAtTime(250 + 2200 * (d / 420), t0); muffle.frequency.exponentialRampToValueAtTime(20000, t0 + 3.2); tone(3600, 1.6, 0.05 * (1 - d / 420), 'sine'); supp = Math.min(1, supp + 0.6 * (1 - d / 420)); } }
       if (volAt(e.x, e.y) > 0.6) rumble(260, volAt(e.x, e.y), 0.6 * volAt(e.x, e.y));
       noise(500, 0.9, volAt(e.x, e.y) * 0.9);
       shake = Math.max(shake, 14 * volAt(e.x, e.y));
@@ -5795,8 +5822,98 @@ function buildWorld(mapId) {
     scene.add(snowPts);
   }
   buildObjectives(mapId, currentMode);
+  clearDecals();
+  setWeather(match.wx || 'clear');
+}
+// ---- weather and time of day (the server picks it per match, so everyone sees the same)
+let rainLines = null, curWx = 'clear';
+const SUN_BASE = new THREE.Vector3(S.MAP_W / 2 - 900, 1400, S.MAP_H / 2 - 500);
+function setWeather(wx) {
+  curWx = wx;
+  const th = THEMES[(S.MAPS[worldMapId] || S.MAPS.ruins).theme] || THEMES.ruins;
+  const fog = new THREE.Color(th.fog);
+  let near = th.near, far = th.far, hemiK = 1, sunK = 1, sunCol = new THREE.Color(th.sun), skyCol = new THREE.Color(th.sky);
+  sun.position.copy(SUN_BASE);
+  if (wx === 'overcast') { fog.lerp(new THREE.Color(0xa8acae), 0.5); near *= 0.8; far *= 0.85; hemiK = 0.85; sunK = 0.45; sunCol.set(0xdfe4ea); }
+  else if (wx === 'dusk') { fog.lerp(new THREE.Color(0xc0784a), 0.6); far *= 0.75; hemiK = 0.55; sunK = 0.9; sunCol.set(0xff9248); skyCol.set(0xd09a7a); sun.position.set(S.MAP_W / 2 - 2200, 320, S.MAP_H / 2 - 700); }
+  else if (wx === 'rain') { fog.lerp(new THREE.Color(0x868e93), 0.7); near = 220; far = 1900; hemiK = 0.7; sunK = 0.22; sunCol.set(0xc8d0d8); }
+  else if (wx === 'fog') { fog.lerp(new THREE.Color(0xc2c6c4), 0.65); near = 60; far = 1050; hemiK = 0.9; sunK = 0.4; }
+  scene.fog = new THREE.Fog(fog, near, far); scene.background = fog.clone();
+  hemi.color.copy(skyCol); hemi.intensity = th.hemi * hemiK;
+  sun.color.copy(sunCol); sun.intensity = th.sunI * sunK;
+  if (rainLines) { scene.remove(rainLines); rainLines.geometry.dispose(); rainLines = null; }
+  if (wx === 'rain') {
+    const N = isTouch ? 900 : 2200, arr = new Float32Array(N * 6);
+    for (let i = 0; i < N; i++) { const x = (Math.random() - 0.5) * 1400, y = Math.random() * 520, z = (Math.random() - 0.5) * 1400; arr.set([x, y, z, x + 2, y + 16, z], i * 6); }
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+    rainLines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xb4bec6, transparent: true, opacity: 0.5, depthWrite: false }));
+    rainLines.frustumCulled = false; scene.add(rainLines);
+  }
+  rainSound(wx === 'rain' && joined);
+}
+function rainSound(on) {
+  if (!actx) return;
+  if (on && !rainSrc) {
+    rainSrc = actx.createBufferSource(); rainSrc.buffer = noiseBuf; rainSrc.loop = true;
+    const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.4;
+    const g = actx.createGain(); g.gain.value = 0.07;
+    rainSrc.connect(f); f.connect(g); g.connect(master); rainSrc.start();
+  } else if (!on && rainSrc) { try { rainSrc.stop(); } catch (e) { /* already stopped */ } rainSrc = null; }
+}
+function updateRain(dt) {
+  if (!rainLines) return;
+  const a = rainLines.geometry.attributes.position.array;
+  for (let i = 0; i < a.length; i += 6) {
+    a[i + 1] -= 900 * dt; a[i + 4] -= 900 * dt; a[i] -= 60 * dt; a[i + 3] -= 60 * dt;
+    if (a[i + 1] < 0) { const x = (Math.random() - 0.5) * 1400, z = (Math.random() - 0.5) * 1400, y = 480 + Math.random() * 40; a[i] = x; a[i + 1] = y; a[i + 2] = z; a[i + 3] = x + 2; a[i + 4] = y + 16; a[i + 5] = z; }
+  }
+  rainLines.geometry.attributes.position.needsUpdate = true;
+  rainLines.position.set(camera.position.x, 0, camera.position.z);
+}
+// ---- bullet holes on walls, crates and the ground
+const decals = [];
+let decalMat = null;
+function clearDecals() { for (const d of decals) scene.remove(d); decals.length = 0; }
+function addImpact(p) {
+  let n = null;
+  if (p.y < 2.5) n = new THREE.Vector3(0, 1, 0);
+  else for (const w of S.WALLS) {
+    if (w.k === 'water' || w.k === 'tree' || p.y > w.ht + 2 || p.x < w.x - 2.5 || p.x > w.x + w.w + 2.5 || p.z < w.y - 2.5 || p.z > w.y + w.h + 2.5) continue;
+    const ds = [[Math.abs(p.x - w.x), -1, 0, 0], [Math.abs(p.x - w.x - w.w), 1, 0, 0], [Math.abs(p.z - w.y), 0, 0, -1], [Math.abs(p.z - w.y - w.h), 0, 0, 1], [Math.abs(p.y - w.ht), 0, 1, 0]];
+    ds.sort((a, b) => a[0] - b[0]); n = new THREE.Vector3(ds[0][1], ds[0][2], ds[0][3]); break;
+  }
+  if (!n) return;
+  if (!decalMat) {
+    const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32, 32, 2, 32, 32, 30); gr.addColorStop(0, 'rgba(10,8,6,1)'); gr.addColorStop(0.25, 'rgba(30,26,20,.95)'); gr.addColorStop(0.45, 'rgba(90,80,64,.55)'); gr.addColorStop(1, 'rgba(90,80,64,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    decalMat = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+  }
+  const m = decals.length >= 160 ? decals.shift() : new THREE.Mesh(new THREE.PlaneGeometry(1, 1), decalMat);
+  const sz = 3 + Math.random() * 2.5; m.scale.set(sz, sz, 1);
+  m.position.copy(p).addScaledVector(n, 0.35);
+  m.lookAt(tmpV.copy(m.position).add(n)); m.rotateZ(Math.random() * TAU);
+  if (!m.parent) scene.add(m);
+  decals.push(m);
+}
+// ---- suppression: bullets cracking past you shake your aim and close in your vision
+let supp = 0;
+function nearMiss(a, b, now) {
+  if (!you || !you.alive) return;
+  const eye = tmpC.set(pred.x, myEye(), pred.y);
+  const ab = tmpB.copy(b).sub(a), L2 = ab.lengthSq(); if (L2 < 1) return;
+  const t = S.clamp(tmpA.copy(eye).sub(a).dot(ab) / L2, 0, 1);
+  if (t < 0.12) return;
+  const d = tmpA.copy(a).addScaledVector(ab, t).distanceTo(eye);
+  if (d > 75) return;
+  supp = Math.min(1, supp + 0.3 * (1 - d / 90));
+  noise(5200, 0.05, 0.3 * (1 - d / 75)); // supersonic crack
+  setTimeout(() => noise(1800, 0.09, 0.14 * (1 - d / 75)), 25); // whizz
 }
 function updateSnow(dt, now) {
+  updateRain(dt);
+  supp = Math.max(0, supp - dt * 0.55);
   if (!snowPts) return;
   const a = snowPts.geometry.attributes.position.array;
   for (let i = 0; i < a.length; i += 3) {
@@ -6643,6 +6760,7 @@ function loadoutSummary() {
 }
 function showMenu(err) {
   joined = false;
+  rainSound(false);
   lobbyInfo = null; lastLobbyState = null;
   if (document.pointerLockElement) document.exitPointerLock();
   for (const id of [...soldiers.keys()]) removeSoldier(id);
@@ -6803,6 +6921,10 @@ fillSelect($('cMode'), S.MODE_IDS, 'tdm', modeLabel);
 const fillScores = (el, mode, val) => fillSelect(el, S.MODES[mode].scores, val == null ? S.MODES[mode].def : val, scoreLabel(mode));
 fillScores($('cScore'), 'tdm');
 fillSelect($('cTime'), TIME_OPTS, 10, (o) => o + ' min');
+const WX_OPTS = ['random'].concat(S.WEATHER_IDS), wxLabel = (w) => (w === 'random' ? 'Random' : S.WEATHER[w].name);
+fillSelect($('cWeather'), WX_OPTS, 'random', wxLabel);
+fillSelect($('offWeather'), WX_OPTS, loadSaved('fl_offWeather', 'random'), wxLabel);
+$('offWeather').addEventListener('change', () => save('fl_offWeather', $('offWeather').value));
 $('cMode').addEventListener('change', () => { fillScores($('cScore'), $('cMode').value); $('cModeDesc').textContent = S.MODES[$('cMode').value].desc; });
 $('cMap').addEventListener('change', () => buildWorld($('cMap').value));
 $('cModeDesc').textContent = S.MODES.tdm.desc;
@@ -6814,7 +6936,7 @@ $('createBack').addEventListener('click', () => showMenu(''));
 $('createGo').addEventListener('click', () => {
   phoneFullscreen();
   online(() => send({ t: 'create', name: playerName(), lobbyName: $('lobbyName').value.trim() || $('lobbyName').placeholder,
-    bots: +$('cBots').value, score: +$('cScore').value, time: +$('cTime').value, priv: $('cPriv').checked, map: $('cMap').value, mode: $('cMode').value, loadout }));
+    bots: +$('cBots').value, score: +$('cScore').value, time: +$('cTime').value, priv: $('cPriv').checked, map: $('cMap').value, mode: $('cMode').value, weather: $('cWeather').value, loadout }));
 });
 
 // ---- lobby browser
@@ -7159,7 +7281,8 @@ function updateSway(now, dt, scoped, st) {
     if (breath.holding) amp *= 0.08; else if (breath.tired > 0) amp *= 1.7;
   }
   const t = now / 1000;
-  const nx = amp * (Math.sin(t * 0.9) + 0.5 * Math.sin(t * 2.3 + 1)), ny = amp * 0.8 * (Math.sin(t * 1.4 + 2) + 0.4 * Math.cos(t * 3.1));
+  amp += supp * 0.006; // suppressed: your aim shakes
+  const nx = amp * (Math.sin(t * 0.9) + 0.5 * Math.sin(t * 2.3 + 1) + supp * 0.8 * Math.sin(t * 9.1)), ny = amp * 0.8 * (Math.sin(t * 1.4 + 2) + 0.4 * Math.cos(t * 3.1) + supp * 0.8 * Math.cos(t * 7.3));
   yaw += nx - breath.ox; pitch += ny - breath.oy;
   breath.ox = nx; breath.oy = ny;
 }
@@ -7289,13 +7412,14 @@ function frame(now) {
     if (!aliveP) {
       if (!s.deadAt) s.deadAt = now;
       const k = Math.min(1, (now - s.deadAt) / 350);
-      s.root.rotation.z = k * 1.45;
+      s.root.rotation.z = k * 1.45 * (s.fallDir || 1);
+      s.root.rotation.x = k * (s.fallTwist || 0);
       s.root.position.y = -k * 6;
-      s.root.visible = now - s.deadAt < 3000;
+      s.root.visible = now - s.deadAt < 10000;
       if (s.tag) s.tag.visible = false;
       continue;
     }
-    if (s.deadAt) { s.deadAt = 0; s.root.rotation.z = 0; s.root.position.y = 0; s.lastX = p.x; s.lastY = p.y; }
+    if (s.deadAt) { s.deadAt = 0; s.root.rotation.z = 0; s.root.rotation.x = 0; s.fallDir = 0; s.root.position.y = 0; s.lastX = p.x; s.lastY = p.y; }
     if (s.root.rotation.z > 1.2 && !(p.f & 256)) s.root.rotation.z = 0;
     s.root.visible = true;
     const sp = Math.hypot(p.x - s.lastX, p.y - s.lastY) / Math.max(dt, 0.001);
@@ -7510,6 +7634,12 @@ function drawOverlay(now, players, st, scoped, ads, moving, sprint) {
       gr.addColorStop(0, `rgba(200,190,170,${0.12 * k})`); gr.addColorStop(1, `rgba(60,50,40,${0.65 * k})`);
       c.fillStyle = gr; c.fillRect(0, 0, W, H);
     }
+  }
+  // suppression: the edges of your vision darken
+  if (supp > 0.02 && you.alive) {
+    const gr = c.createRadialGradient(cx, cy, Math.min(W, H) * (0.42 - supp * 0.22), cx, cy, Math.max(W, H) * 0.62);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, `rgba(12,10,8,${0.75 * supp})`);
+    c.fillStyle = gr; c.fillRect(0, 0, W, H);
   }
   // flashbang whiteout
   if (flashT) {

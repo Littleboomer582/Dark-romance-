@@ -148,6 +148,8 @@ class Room {
     if (TIME_OPTIONS.includes(+o.time)) this.matchMs = +o.time * 60000;
     if (!this.matchMs) this.matchMs = S.MATCH_MS;
     if (o.priv != null) this.priv = !!o.priv;
+    if (o.weather === 'random' || S.WEATHER[o.weather]) this.weatherPref = o.weather;
+    if (!this.weatherPref) this.weatherPref = 'random';
     if (o.name != null && this.lobby) this.name = cleanText(o.name, 24, this.name || 'Lobby');
   }
 
@@ -156,6 +158,8 @@ class Room {
     useRoom(this);
     this.score = { allies: 0, axis: 0 };
     this.state = 'playing';
+    this.weather = this.weatherPref && this.weatherPref !== 'random' ? this.weatherPref : S.WEATHER_IDS[Math.floor(Math.random() * S.WEATHER_IDS.length)];
+    if (this.map === 'winter' && this.weather === 'rain') this.weather = 'overcast'; // it snows there instead
     this.endsAt = now + this.matchMs;
     this.nades = [];
     this.initObjectives(now);
@@ -437,8 +441,11 @@ class Room {
 
   startReload(p, now) {
     const g = this.gun(p);
-    if (p.reloadEnd || g.ammo >= g.stats.mag || g.reserve <= 0) return;
-    p.reloadEnd = now + g.stats.reload;
+    const chamber = g.stats.chamber && g.ammo > 0;
+    if (p.reloadEnd || g.ammo >= g.stats.mag + (chamber ? 1 : 0) || g.reserve <= 0) return;
+    p.reloadDur = g.stats.reload * (g.ammo === 0 ? 1.25 : 1); // an empty gun also needs its bolt released
+    p.reloadTac = chamber;
+    p.reloadEnd = now + p.reloadDur;
   }
 
   swap(p, now) {
@@ -890,7 +897,7 @@ class Room {
     }
     const g = this.gun(p);
     if (p.reloadEnd && now >= p.reloadEnd) {
-      const need = g.stats.mag - g.ammo;
+      const need = g.stats.mag + (p.reloadTac ? 1 : 0) - g.ammo; // +1 in the chamber
       const take = Math.min(need, g.reserve);
       g.ammo += take; g.reserve -= take;
       p.reloadEnd = 0;
@@ -982,7 +989,7 @@ class Room {
     }
     const base = {
       t: 's', p: ps, n: this.nades.map((n) => [n.x | 0, n.y | 0, n.h | 0, NADE_CODE[n.kind] || 0]), fz: (this.fires || []).map((f) => [f.x | 0, f.y | 0, f.id]), sk: (this.clouds || []).map((c) => [c.x | 0, c.y | 0, c.id, Math.max(0, c.until - now) | 0]), sv: (this.packs || []).map((k) => [k.x | 0, k.y | 0, k.id]), sc: [Math.floor(this.score.allies), Math.floor(this.score.axis)],
-      tl: this.mode === 'sd' && this.obj ? (this.obj.sites.find((st) => st.state === 'planted') ? Math.max(0, this.obj.sites.find((st) => st.state === 'planted').explodeAt - now) : this.obj.phase === 'live' ? Math.max(0, this.obj.roundEndsAt - now) : 0) : Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, mp: this.map, md: this.mode, ob: this.objState(now), rc: [Math.max(0, (this.recon || {}).allies - now) | 0, Math.max(0, (this.recon || {}).axis - now) | 0], jm: [Math.max(0, (this.jam || {}).allies - now) | 0, Math.max(0, (this.jam || {}).axis - now) | 0], dr: (this.drops || []).map((d) => [d.x | 0, d.y | 0, d.team === 'allies' ? 1 : 2, now >= d.landAt ? 1 : 0, d.id, Math.max(0, d.landAt - now) | 0]), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
+      tl: this.mode === 'sd' && this.obj ? (this.obj.sites.find((st) => st.state === 'planted') ? Math.max(0, this.obj.sites.find((st) => st.state === 'planted').explodeAt - now) : this.obj.phase === 'live' ? Math.max(0, this.obj.roundEndsAt - now) : 0) : Math.max(0, this.endsAt - now), sl: this.scoreLimit, lb: this.lobby ? 1 : 0, wx: this.weather || 'clear', mp: this.map, md: this.mode, ob: this.objState(now), rc: [Math.max(0, (this.recon || {}).allies - now) | 0, Math.max(0, (this.recon || {}).axis - now) | 0], jm: [Math.max(0, (this.jam || {}).allies - now) | 0, Math.max(0, (this.jam || {}).axis - now) | 0], dr: (this.drops || []).map((d) => [d.x | 0, d.y | 0, d.team === 'allies' ? 1 : 2, now >= d.landAt ? 1 : 0, d.id, Math.max(0, d.landAt - now) | 0]), st: this.state, rs: this.state === 'ended' ? Math.max(0, this.restartAt - now) : 0, ev: this.events,
     };
     this.events = [];
     for (const p of this.players.values()) {
@@ -990,7 +997,7 @@ class Room {
       const g = this.gun(p);
       base.you = {
         seq: p.lastSeq, x: p.x, y: p.y, alive: p.alive, hp: Math.ceil(p.hp), slot: p.slot, ammo: g.ammo, res: g.reserve,
-        rl: p.reloadEnd ? Math.max(0, p.reloadEnd - now) / g.stats.reload : 0, nd: p.nades, td: p.tacs || 0, lt: (p.loadout || p.pendingLoadout).lethal, tt: (p.loadout || p.pendingLoadout).tactical, pk: (p.loadout || p.pendingLoadout).perks, fl: Math.max(0, (p.flashUntil || 0) - now), sn: Math.max(0, (p.stunUntil || 0) - now), rg: p.rgren || 0, team: p.team,
+        rl: p.reloadEnd ? Math.max(0, p.reloadEnd - now) / (p.reloadDur || g.stats.reload) : 0, nd: p.nades, td: p.tacs || 0, lt: (p.loadout || p.pendingLoadout).lethal, tt: (p.loadout || p.pendingLoadout).tactical, pk: (p.loadout || p.pendingLoadout).perks, fl: Math.max(0, (p.flashUntil || 0) - now), sn: Math.max(0, (p.stunUntil || 0) - now), rg: p.rgren || 0, team: p.team,
         ri: p.alive ? 0 : Math.max(0, p.respawnAt - now), kb: p.killedBy, kw: p.killedWith, kx: p.killerPos,
         g: p.guns.map((x) => [x.id, x.stats.atts]),
         sp: p.sp || 0, ks: p.ks || [], ksl: (p.loadout || p.pendingLoadout).streaks,
@@ -1088,7 +1095,7 @@ function botThink(room, p, now, dt) {
       if (!q.alive || q.team === p.team) continue;
       const d = Math.hypot(q.x - p.x, q.y - p.y);
       if (hasPerk(q, 'coldblooded') && d > 550 && q !== b.target) continue;
-      if (d < 1300 && d < bd && S.hasLOS3(p.x, p.y, p.z + S.eyeHeight(p.stance), q.x, q.y, q.z + S.bodyHeight(q.stance) - 6) && !room.smokeBlocks(p.x, p.y, q.x, q.y)) { bd = d; best = q; }
+      if (d < (S.WEATHER[room.weather] || S.WEATHER.clear).sight && d < bd && S.hasLOS3(p.x, p.y, p.z + S.eyeHeight(p.stance), q.x, q.y, q.z + S.bodyHeight(q.stance) - 6) && !room.smokeBlocks(p.x, p.y, q.x, q.y)) { bd = d; best = q; }
     }
     if (p.flashUntil > now) best = null;
     if (best && best !== b.target) { b.acquiredAt = now + (hasPerk(best, 'coldblooded') ? 400 : 0); b.aimErr = (Math.random() < 0.5 ? -1 : 1) * (0.25 + Math.random() * 0.5); }
@@ -1217,14 +1224,14 @@ function connect(ws) {
       let code;
       if (m.t === 'create') {
         do { code = Array.from({ length: 5 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join(''); } while (rooms.has(code));
-        room = new Room(code, { lobby: true, name: m.lobbyName || name + "'s lobby", bots: m.bots, score: m.score, time: m.time, priv: m.priv, map: m.map, mode: m.mode });
+        room = new Room(code, { lobby: true, name: m.lobbyName || name + "'s lobby", bots: m.bots, score: m.score, time: m.time, priv: m.priv, map: m.map, mode: m.mode, weather: m.weather });
         rooms.set(code, room);
       } else {
         code = String(m.room || 'PUBLIC').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'PUBLIC';
         room = rooms.get(code);
         if (!room) {
           if (code !== 'PUBLIC' && code !== 'OFFLINE' && !m.quick) { ws.send(JSON.stringify({ t: 'err', msg: 'No lobby found with code ' + code + '.' })); room = null; return; }
-          room = new Room(code, code === 'PUBLIC' ? { bots: 4, rotate: true } : { bots: m.bots == null ? 4 : m.bots, map: m.map, mode: m.mode, time: m.time });
+          room = new Room(code, code === 'PUBLIC' ? { bots: 4, rotate: true } : { bots: m.bots == null ? 4 : m.bots, map: m.map, mode: m.mode, time: m.time, weather: m.weather });
           rooms.set(code, room);
         }
       }

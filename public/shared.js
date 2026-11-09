@@ -217,6 +217,9 @@
       bipod: false, recoil: RECOIL[w.cls], noFlash: false, fmj: false, rifleNades: 0, adsSpeed: 9, atts,
       burst: w.burst || 0, hipMult: 1, optic: null, era: w.era,
     };
+    // closed-bolt guns keep a round in the chamber: a reload before running dry holds one extra
+    s.chamber = (['Assault Rifle', 'Pistol', 'Sniper', 'Rifle'].includes(w.cls) && !['garand', 'revolver', 'bar', 'kar98k', 'springfield', 'mosin', 'arisaka', 'm1887'].includes(id) && !w.bolt)
+      || ['mp5k', 'ump45', 'mp7', 'vector', 'pp2000', 'skorpion', 'p90', 'aa12', 'm1014', 'spas12'].includes(id);
     if (w.scoped) { s.zoom = w.cls === 'Sniper' ? 4 : 4; s.adsMult *= 0.35; s.adsSpeed = 6; s.optic = 'scope'; }
     for (const a of atts) {
       switch (a) {
@@ -580,6 +583,11 @@
     dem: { name: 'Demolition', short: 'DEM', desc: 'With respawns, the Allies attack: blow up both sites A and B before time runs out. The Axis defend and defuse.', scores: [2], def: 2, unit: 'sites' },
   };
   const MODE_IDS = Object.keys(MODES);
+  const WEATHER = {
+    clear: { name: 'Clear day', sight: 1300 }, overcast: { name: 'Overcast', sight: 1200 }, dusk: { name: 'Dusk', sight: 900 },
+    rain: { name: 'Rain', sight: 950 }, fog: { name: 'Fog', sight: 700 },
+  };
+  const WEATHER_IDS = Object.keys(WEATHER);
   // Killstreaks: earned by kills in a row without dying (killstreak kills don't count)
   // Scorestreaks: earned with points (kills, assists, objectives) without dying. Pick 3 in your loadout.
   const STREAKS = {
@@ -839,7 +847,7 @@
     computeStats, sanitizeLoadout, cleanAtts, resolveCircle, moveCircle, rayWalls, rayWorld, rayCylinder, rayCircle,
     hasLOS, hasLOS3, moveSpeed, applyMove, currentSpread, eyeHeight, bodyHeight, headZone, clamp,
     groundAt, stepMove, newMoveState, GRAVITY, JUMP_V, SPRINT_MAX,
-    LETHALS, TACTICALS, PERKS, PERK_SLOTS, DEFAULT_PERKS, STARTER_CLASSES, streakCost, OPERATOR, OP_KEYS, cleanOperator, operatorCode,
+    WEATHER, WEATHER_IDS, LETHALS, TACTICALS, PERKS, PERK_SLOTS, DEFAULT_PERKS, STARTER_CLASSES, streakCost, OPERATOR, OP_KEYS, cleanOperator, operatorCode,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Shared = api;
