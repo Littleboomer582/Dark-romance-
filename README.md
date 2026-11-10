@@ -180,6 +180,28 @@ The game is a single Node.js server that hosts both the web page and the WebSock
 
 Use **HTTPS** in production. Android needs HTTPS before it lets you install the app.
 
+### Northflank (free, never sleeps)
+
+The repository has a `Dockerfile`, so Northflank can build and run the server directly from GitHub. The free Developer Sandbox keeps the service running all the time. It asks for a card to verify your account, but the sandbox itself is free.
+
+1. Sign up at **northflank.com** with your GitHub account. Choose the free **Developer Sandbox** and verify your card.
+2. Create a **project** and pick the region closest to your players.
+3. Click **Create new → Service → Combined service** (this builds and runs in one step).
+4. Under **Repository**, connect GitHub and pick this repository and its branch.
+5. Set **Build type** to **Dockerfile**, using the path `/Dockerfile` and the build context `/`.
+6. For **Resources**, choose the smallest free plan.
+7. Under **Networking**, add port **3000** with protocol **HTTP** and turn on **Publicly expose this port**.
+8. (Optional) Add a health check: an HTTP check on port 3000, path `/healthz`.
+9. Click **Create service** and wait for the build to finish. This takes about 1 to 2 minutes.
+10. Copy the public address Northflank gives you; it looks like `https://p01--frontline--xxxx.code.run`.
+11. Open that address to play in the browser. In the Android app or `frontline-1945.html`, paste it into the **Game server** box before you press QUICK PLAY, CREATE LOBBY or FIND LOBBY.
+
+Every time you push to that branch, Northflank rebuilds and redeploys automatically.
+
+### Koyeb (backup option)
+
+**Create Web Service → GitHub →** pick the repository and branch. **Builder: Dockerfile**, exposed port **3000**, health check path `/healthz`, instance **Free**. The free instance may scale down when nobody is playing, so the first player can wait a few seconds while it starts.
+
 ## Install on Android
 
 1. Open the game's HTTPS address in **Chrome** on the phone.
